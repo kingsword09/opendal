@@ -28,6 +28,31 @@ export class ExternalObject<T> {
     [K: symbol]: T
   }
 }
+export interface ReadOptions {
+  version?: string
+  concurrent?: number
+  chunk?: number
+  gap?: bigint
+  offset?: bigint
+  size?: bigint
+  ifMatch?: string
+  ifNoneMatch?: string
+  ifModifiedSince?: number
+  ifUnmodifiedSince?: number
+  contentType?: string
+  cacheControl?: string
+  contentDisposition?: string
+}
+export interface ReaderOptions {
+  version?: string
+  concurrent?: number
+  chunk?: number
+  gap?: bigint
+  ifMatch?: string
+  ifNoneMatch?: string
+  ifModifiedSince?: number
+  ifUnmodifiedSince?: number
+}
 export interface ListOptions {
   limit?: number
   recursive?: boolean
@@ -266,13 +291,13 @@ export class Operator {
    * const buf = await op.read("path/to/file");
    * ```
    */
-  read(path: string): Promise<Buffer>
+  read(path: string, options?: ReadOptions | undefined | null): Promise<Buffer>
   /**
    * Create a reader to read the given path.
    *
    * It could be used to read large file in a streaming way.
    */
-  reader(path: string): Promise<Reader>
+  reader(path: string, options?: ReaderOptions | undefined | null): Promise<Reader>
   /**
    * Read the whole path into a buffer synchronously.
    *
@@ -281,13 +306,13 @@ export class Operator {
    * const buf = op.readSync("path/to/file");
    * ```
    */
-  readSync(path: string): Buffer
+  readSync(path: string, options?: ReadOptions | undefined | null): Buffer
   /**
    * Create a reader to read the given path synchronously.
    *
    * It could be used to read large file in a streaming way.
    */
-  readerSync(path: string): BlockingReader
+  readerSync(path: string, options?: ReaderOptions | undefined | null): BlockingReader
   /**
    * Write bytes into a path.
    *

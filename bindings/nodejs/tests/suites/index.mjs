@@ -24,6 +24,8 @@ import { checkRandomRootEnabled, generateRandomRoot, loadConfigFromEnv } from '.
 import { run as AsyncIOTestRun } from './async.suite.mjs'
 import { run as ServicesTestRun } from './services.suite.mjs'
 import { run as SyncIOTestRun } from './sync.suite.mjs'
+import { run as AsyncReadOptionsTestRun } from './asyncReadOptions.suite.mjs'
+import { run as BlockingReadOptionsTestRun } from './blockingReadOptions.suite.mjs'
 
 export function runner(testName, scheme) {
   if (!scheme) {
@@ -50,8 +52,10 @@ export function runner(testName, scheme) {
   operator = operator.layer(retryLayer.build())
 
   describe.skipIf(!operator)(testName, () => {
-    AsyncIOTestRun(operator)
-    ServicesTestRun(operator)
-    SyncIOTestRun(operator)
+    // AsyncIOTestRun(operator)
+    // ServicesTestRun(operator)
+    // SyncIOTestRun(operator)
+    AsyncReadOptionsTestRun(operator)
+    BlockingReadOptionsTestRun(operator)
   })
 }

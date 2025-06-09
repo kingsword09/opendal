@@ -27,8 +27,10 @@ use std::time::Duration;
 use futures::AsyncReadExt;
 use futures::TryStreamExt;
 use napi::bindgen_prelude::*;
+use opendal::options::{ReadOptions, ReaderOptions};
 
 mod capability;
+mod options;
 
 #[napi]
 pub struct Operator {
@@ -195,10 +197,15 @@ impl Operator {
     /// const buf = await op.read("path/to/file");
     /// ```
     #[napi]
-    pub async fn read(&self, path: String) -> Result<Buffer> {
+    pub async fn read(
+        &self,
+        path: String,
+        options: Option<options::ReadOptions>
+    ) -> Result<Buffer> {
+        let options = ReadOptions::from(options.unwrap_or_default());
         let res = self
             .async_op
-            .read(&path)
+            .read_options(&path, options)
             .await
             .map_err(format_napi_error)?
             .to_vec();
@@ -209,10 +216,11 @@ impl Operator {
     ///
     /// It could be used to read large file in a streaming way.
     #[napi]
-    pub async fn reader(&self, path: String) -> Result<Reader> {
+    pub async fn reader(&self, path: String, options: Option<options::ReaderOptions>,) -> Result<Reader> {
+        let options = ReaderOptions::from(options.unwrap_or_default());
         let r = self
             .async_op
-            .reader(&path)
+            .reader_options(&path, options)
             .await
             .map_err(format_napi_error)?;
         Ok(Reader {
@@ -230,10 +238,11 @@ impl Operator {
     /// const buf = op.readSync("path/to/file");
     /// ```
     #[napi]
-    pub fn read_sync(&self, path: String) -> Result<Buffer> {
+    pub fn read_sync(&self, path: String, options: Option<options::ReadOptions>) -> Result<Buffer> {
+        let options = ReadOptions::from(options.unwrap_or_default());
         let res = self
             .blocking_op
-            .read(&path)
+            .read_options(&path, options)
             .map_err(format_napi_error)?
             .to_vec();
         Ok(res.into())
@@ -243,8 +252,9 @@ impl Operator {
     ///
     /// It could be used to read large file in a streaming way.
     #[napi]
-    pub fn reader_sync(&self, path: String) -> Result<BlockingReader> {
-        let r = self.blocking_op.reader(&path).map_err(format_napi_error)?;
+    pub fn reader_sync(&self, path: String, options: Option<options::ReaderOptions>) -> Result<BlockingReader> {
+        let options = ReaderOptions::from(options.unwrap_or_default());
+        let r = self.blocking_op.reader_options(&path, options).map_err(format_napi_error)?;
         Ok(BlockingReader {
             inner: r.into_std_read(..).map_err(format_napi_error)?,
         })

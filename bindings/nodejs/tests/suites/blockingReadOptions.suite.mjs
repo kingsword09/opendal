@@ -17,22 +17,24 @@
  * under the License.
  */
 
-import { defineConfig } from 'vitest/config'
-import pkg from './package.json'
+import { randomUUID } from 'node:crypto'
+import { test, describe, beforeAll, assert } from 'vitest'
+import { generateBytes, generateFixedBytes } from '../utils.mjs'
+import { Readable, Writable } from 'node:stream'
+import { finished, pipeline } from 'node:stream/promises'
 
-export default defineConfig({
-  test: {
-    name: pkg.name,
-    cache: false,
-    watch: false,
-    globals: true,
-    environment: 'node',
-    dir: 'tests',
-    reporters: {
-      default: {
-        summary: false
-      }
-    },
-    testTimeout: 300 * 1000,
-  },
-})
+/**
+ * @param {import("../../index").Operator} op
+ */
+export function run(op) {
+  describe('blocking read options', () => {
+    const capability = op.capability()
+    beforeAll(() => {
+      assert.equal(capability.read && capability.write, true)
+    })
+
+    test.runIf(capability.readWithIfMatch)('readWithIfMatch', () => {
+
+    })
+  })
+}
