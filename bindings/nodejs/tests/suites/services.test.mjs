@@ -17,13 +17,19 @@
  * under the License.
  */
 
-export function run(operator) {
+import { describe, test, assert, inject } from 'vitest'
+
+describe('capability', () => {
+
+
   test('get capability', () => {
+    const operator = globalThis.operator
     assert.ok(operator.capability())
   })
 
   test('try to non-exist capability', () => {
+    const operator = globalThis.operator
     assert.ok(operator.capability())
     assert.ifError(operator.capability().nonExist, 'try get a non-exist capability should return undefined')
   })
-}
+})

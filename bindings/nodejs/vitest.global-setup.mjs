@@ -17,18 +17,15 @@
  * under the License.
  */
 
-import { describe } from 'vitest'
-import { Operator, layers } from '../../index.mjs'
-import { checkRandomRootEnabled, generateRandomRoot, loadConfigFromEnv } from '../utils.mjs'
+import { checkRandomRootEnabled, generateRandomRoot, loadConfigFromEnv, loadTestSchemeFromEnv } from './tests/utils.mjs'
+import { Operator, layers } from './index.mjs'
 
-import { run as AsyncIOTestRun } from './async.suite.mjs'
-import { run as ServicesTestRun } from './services.suite.mjs'
-import { run as SyncIOTestRun } from './sync.suite.mjs'
-
-export function runner(testName, scheme) {
+export default async function setup() {
+  // const { vi } = await import('vitest')
+  const scheme = loadTestSchemeFromEnv()
   if (!scheme) {
     console.warn('The scheme is empty. Test will be skipped.')
-    return
+    // return
   }
 
   const config = loadConfigFromEnv(scheme)
@@ -41,17 +38,22 @@ export function runner(testName, scheme) {
     }
   }
 
+  console.log('scheme', scheme)
+
   let operator = scheme ? new Operator(scheme, config) : null
+  console.log('QAQ operator', operator)
 
   let retryLayer = new layers.RetryLayer()
   retryLayer.jitter = true
   retryLayer.maxTimes = 4
 
-  operator = operator.layer(retryLayer.build())
+  if (operator) {
+    // vi.stubGlobal('operator', operator)
+    globalThis.operator = operator
+  }
 
-  describe.skipIf(!operator)(testName, () => {
-    AsyncIOTestRun(operator)
-    ServicesTestRun(operator)
-    SyncIOTestRun(operator)
-  })
+  return () => {
+    // vi.unstubAllGlobals()
+    globalThis.operator = null
+  }
 }

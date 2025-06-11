@@ -17,6 +17,8 @@
  * under the License.
  */
 
+import path from 'path'
+import dotenv from 'dotenv'
 import { defineConfig } from 'vitest/config'
 import pkg from './package.json'
 
@@ -30,5 +32,8 @@ export default defineConfig({
     dir: 'tests',
     reporters: 'basic',
     testTimeout: 300 * 1000,
+    env: dotenv.config({ path: path.resolve(__dirname, '.env'), debug: true }).parsed,
+    globalSetup: './vitest.global-setup.mjs',
+    // setupFiles: "./vitest.setup.mjs"
   },
 })
