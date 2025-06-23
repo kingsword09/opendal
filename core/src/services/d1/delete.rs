@@ -15,20 +15,24 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#[cfg(feature = "services-d1")]
-mod error;
-#[cfg(feature = "services-d1")]
-mod model;
-#[cfg(feature = "services-d1")]
-mod core;
-#[cfg(feature = "services-d1")]
-mod backend;
-#[cfg(feature = "services-d1")]
-mod writer;
-#[cfg(feature = "services-d1")]
-mod delete;
-#[cfg(feature = "services-d1")]
-pub use backend::D1Builder as D1;
+use crate::raw::{build_abs_path, oio, OpDelete};
+use crate::services::d1::core::D1Core;
 
-mod config;
-pub use config::D1Config;
+pub struct D1Deleter {
+    pub core: std::sync::Arc<D1Core>,
+    pub root: String,
+}
+
+impl D1Deleter {
+    pub fn new(core: std::sync::Arc<D1Core>, root: String) -> Self {
+        Self { core, root }
+    }
+}
+
+impl oio::OneShotDelete for D1Deleter {
+    async fn delete_once(&self, path: String, _: OpDelete) -> crate::Result<()> {
+        let p = build_abs_path(&self.root, &path);
+        self.core.delete(&p).await?;
+        Ok(())
+    }
+}
