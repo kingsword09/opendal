@@ -15,21 +15,39 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#[cfg(feature = "services-vercel-blob")]
-mod core;
-#[cfg(feature = "services-vercel-blob")]
-mod error;
-#[cfg(feature = "services-vercel-blob")]
-mod lister;
-#[cfg(feature = "services-vercel-blob")]
-mod writer;
-#[cfg(feature = "services-vercel-blob")]
-mod delete;
+use std::sync::Arc;
 
-#[cfg(feature = "services-vercel-blob")]
-mod backend;
-#[cfg(feature = "services-vercel-blob")]
-pub use backend::VercelBlobBuilder as VercelBlob;
+use http::StatusCode;
 
-mod config;
-pub use config::VercelBlobConfig;
+use super::core::*;
+use super::error::parse_error;
+use crate::raw::oio::BatchDeleteResult;
+use crate::raw::*;
+use crate::*;
+
+pub struct VercelBlobDeleter {
+    core: Arc<VercelBlobCore>,
+}
+
+impl VercelBlobDeleter {
+    pub fn new(core: Arc<VercelBlobCore>) -> Self {
+        Self { core }
+    }
+}
+
+impl oio::BatchDelete for VercelBlobDeleter {
+    async fn delete_once(&self, path: String, _: OpDelete) -> Result<()> {
+        let resp = self.core.vercel_delete_blob(&path).await?;
+
+        let status = resp.status();
+
+        match status {
+            StatusCode::OK => Ok(()),
+            _ => Err(parse_error(resp)),
+        }
+    }
+
+    async fn delete_batch(&self, batch: Vec<(String, OpDelete)>) -> Result<BatchDeleteResult> {
+
+    }
+}
