@@ -17,13 +17,11 @@
  * under the License.
  */
 
-export function run(operator) {
-  test('get capability', () => {
-    assert.ok(operator.capability())
-  })
+test('get capability', () => {
+  assert.ok(operator.capability())
+})
 
-  test('try to non-exist capability', () => {
-    assert.ok(operator.capability())
-    assert.ifError(operator.capability().nonExist, 'try get a non-exist capability should return undefined')
-  })
-}
+test('try to non-exist capability', () => {
+  assert.ok(operator.capability())
+  assert.ifError(operator.capability().nonExist, 'try get a non-exist capability should return undefined')
+})

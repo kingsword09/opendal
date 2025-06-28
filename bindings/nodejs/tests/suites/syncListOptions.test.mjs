@@ -22,13 +22,12 @@ import path from 'node:path'
 import { test, describe, expect, assert } from 'vitest'
 import { EntryMode } from '../../index.mjs'
 
-/**
- * @param {import("../../index").Operator} op
- */
-export function run(op) {
-  const capability = op.capability()
+describe.runIf(operator.capability().write && operator.capability().read && operator.capability().list)(
+  'sync listOptions tests',
+  () => {
+    const op = operator
+    const capability = op.capability()
 
-  describe.runIf(capability.write && capability.read && capability.list)('sync listOptions tests', () => {
     test('test remove all', () => {
       const parent = `random_remove_${randomUUID()}/`
       op.createDirSync(parent)
@@ -170,5 +169,5 @@ export function run(op) {
 
       op.removeAllSync(dirname)
     })
-  })
-}
+  },
+)

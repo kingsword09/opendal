@@ -17,18 +17,21 @@
  * under the License.
  */
 
+import path from 'path'
+import dotenv from 'dotenv'
 import { defineConfig } from 'vitest/config'
 import pkg from './package.json'
 
 export default defineConfig({
   test: {
-    name: pkg.name,
+    name: { label: `${pkg.name} - behavior test`, color: 'green' },
     cache: false,
     watch: false,
     globals: true,
-    environment: 'node',
-    dir: 'tests',
+    environment: './vitest.environment.mjs',
+    include: ['tests/**/*.test.mjs'],
     testTimeout: 300 * 1000,
+    env: dotenv.config({ path: path.resolve(__dirname, '.env'), debug: true }).parsed,
     reporters: [
       [
         'default',
