@@ -24,8 +24,11 @@ import { Readable, Writable } from 'node:stream'
 import { finished, pipeline } from 'node:stream/promises'
 
 describe('async tests', () => {
-  // const op = globalThis.operator
-  // console.log(op.capability)
+  console.log("QAQ xxx operator", operator)
+  console.log("QAQ xxx globalThis.operator", globalThis.operator)
+  console.log("QAQ xxx global.operator", global.operator)
+  const op = globalThis.operator
+  console.log(op.capability)
 
   test('async stat not exist files', async () => {
     const op = globalThis.operator

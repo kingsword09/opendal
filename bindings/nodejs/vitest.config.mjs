@@ -24,16 +24,14 @@ import pkg from './package.json'
 
 export default defineConfig({
   test: {
-    name: pkg.name,
+    name: { label: `${pkg.name} - behavior test`, color: 'green' },
     cache: false,
     watch: false,
     globals: true,
-    environment: 'node',
-    dir: 'tests',
+    environment: './vitest.environment.mjs',
+    include: ['tests/suites/**.test.mjs'],
     reporters: 'basic',
     testTimeout: 300 * 1000,
     env: dotenv.config({ path: path.resolve(__dirname, '.env'), debug: true }).parsed,
-    globalSetup: './vitest.global-setup.mjs',
-    // setupFiles: "./vitest.setup.mjs"
   },
 })
