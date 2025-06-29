@@ -85,10 +85,7 @@ impl OpendriveCore {
         Ok(metadata)
     }
 
-    async fn parse_folder_metadata(
-        &self,
-        folder: OpendriveGetFolderInfo,
-    ) -> Result<Metadata> {
+    async fn parse_folder_metadata(&self, folder: OpendriveGetFolderInfo) -> Result<Metadata> {
         let last_modified = parse_datetime_from_from_timestamp(
             folder.date_modified.parse().map_err(parse_i64_error)?,
         )
@@ -376,13 +373,13 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        let parsed_res: Result<OpendriveRenameFolderResponse, serde_json::Error> =
+        let parsed_res: Result<OpendriveFolderResponse, serde_json::Error> =
             serde_json::from_reader(resp.body().clone().reader());
 
         match parsed_res {
             Ok(parsed_res) => match parsed_res {
-                OpendriveRenameFolderResponse::Success(_) => Ok(()),
-                OpendriveRenameFolderResponse::Fail(result) => {
+                OpendriveFolderResponse::Success(_) => Ok(()),
+                OpendriveFolderResponse::Fail(result) => {
                     if result.code == 404 {
                         return Err(Error::new(ErrorKind::NotFound, result.message));
                     }
@@ -418,13 +415,108 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        let parsed_res: Result<OpendriveRenameFileResponse, serde_json::Error> =
+        let parsed_res: Result<OpendriveFileResponse, serde_json::Error> =
             serde_json::from_reader(resp.body().clone().reader());
 
         match parsed_res {
             Ok(parsed_res) => match parsed_res {
-                OpendriveRenameFileResponse::Success(_) => Ok(()),
-                OpendriveRenameFileResponse::Fail(result) => {
+                OpendriveFileResponse::Success(_) => Ok(()),
+                OpendriveFileResponse::Fail(result) => {
+                    if result.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                }
+            },
+            Err(err) => Err(new_json_deserialize_error(err)),
+        }
+    }
+
+    async fn copy_folder(&self, from: &str, to: &str) -> Result<()> {
+        let from = build_abs_path(&self.root, from);
+        let to = build_abs_path(&self.root, to);
+
+        let dst_folder_path = get_parent(&to);
+        let folder_name = get_basename(&to);
+
+        let folder_id = self.get_folder_id(&from).await?;
+        let dst_folder_id = self.get_folder_id(dst_folder_path).await?;
+
+        let url = format!("{}/folder/move_copy.json", constants::OPENDRIVE_BASE_URL);
+        let url = self.sign(&url).await?;
+
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "folder_id": &folder_id,
+            "dst_folder_id": &dst_folder_id,
+            "move": false,
+            "copy_recursive": true,
+            "new_folder_name": &folder_name
+        });
+
+        let req = Request::post(&url)
+            .extension(Operation::Copy)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        let parsed_res: Result<OpendriveFolderResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveFolderResponse::Success(_) => Ok(()),
+                OpendriveFolderResponse::Fail(result) => {
+                    if result.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                }
+            },
+            Err(err) => Err(new_json_deserialize_error(err)),
+        }
+    }
+
+    async fn copy_file(&self, from: &str, to: &str) -> Result<()> {
+        let from = build_abs_path(&self.root, from);
+        let to = build_abs_path(&self.root, to);
+
+        let dst_folder_path = get_parent(&to);
+        let file_name = get_basename(&to);
+
+        let file_id = self.get_file_id(&from).await?;
+        let dst_folder_id = self.get_folder_id(dst_folder_path).await?;
+
+        let url = format!("{}/file/move_copy.json", constants::OPENDRIVE_BASE_URL);
+        let url = self.sign(&url).await?;
+
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "src_file_id": &file_id,
+            "dst_folder_id": &dst_folder_id,
+            "move": false,
+            "new_file_name": &file_name
+        });
+
+        let req = Request::post(&url)
+            .extension(Operation::Copy)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        let parsed_res: Result<OpendriveFileResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveFileResponse::Success(_) => Ok(()),
+                OpendriveFileResponse::Fail(result) => {
                     if result.code == 404 {
                         return Err(Error::new(ErrorKind::NotFound, result.message));
                     }
@@ -648,6 +740,16 @@ impl OpendriveCore {
             self.rename_file(from, to).await
         } else {
             self.rename_folder(from, to).await
+        }
+    }
+
+    pub(crate) async fn copy(&self, from: &str, to: &str) -> Result<()> {
+        let metadata = self.stat(from, None).await?;
+
+        if metadata.is_file() {
+            self.copy_file(from, to).await
+        } else {
+            self.copy_folder(from, to).await
         }
     }
 

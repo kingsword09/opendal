@@ -154,14 +154,14 @@ pub enum OpendriveGetListInfoResponse {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-pub enum OpendriveRenameFolderResponse {
+pub enum OpendriveFolderResponse {
     Success(OpendriveGetFolderInfo),
     Fail(OpendriveDeserializeFailError),
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-pub enum OpendriveRenameFileResponse {
+pub enum OpendriveFileResponse {
     Success(OpendriveGetFileInfo),
     Fail(OpendriveDeserializeFailError),
 }

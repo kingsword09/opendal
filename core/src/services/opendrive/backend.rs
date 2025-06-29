@@ -148,25 +148,28 @@ impl Builder for OpendriveBuilder {
         info.set_scheme(Scheme::Onedrive)
             .set_root(&root)
             .set_native_capability(Capability {
+                create_dir: true,
+                copy: true,
+                rename: true,
+
                 read: true,
-                // read_with_if_none_match: true,
+                read_with_if_match: true,
+                read_with_if_none_match: true,
+                read_with_if_modified_since: true,
+                read_with_if_unmodified_since: true,
+                read_with_version: true,
 
                 // write: true,
                 // write_with_if_match: true,
-                // // OneDrive supports the file size up to 250GB
-                // // Read more at https://support.microsoft.com/en-us/office/restrictions-and-limitations-in-onedrive-and-sharepoint-64883a5d-228e-48f5-b3d2-eb39e07630fa#individualfilesize
-                // // However, we can't enable this, otherwise OpenDAL behavior tests will try to test creating huge
-                // // file up to this size.
-                // // write_total_max_size: Some(250 * 1024 * 1024 * 1024),
-                // copy: true,
-                // rename: true,
 
-                // stat: true,
-                // stat_with_if_none_match: true,
+                stat: true,
+                stat_with_if_match: true,
+                stat_with_if_none_match: true,
+                stat_with_if_modified_since: true,
+                stat_with_if_unmodified_since: true,
+                stat_with_version: true,
 
                 // delete: true,
-                // create_dir: true,
-
                 // list: true,
                 // list_with_limit: true,
                 shared: true,
@@ -239,5 +242,11 @@ impl Access for OpendriveAccessor {
         self.core.rename(from, to).await?;
 
         Ok(RpRename::default())
+    }
+
+    async fn copy(&self, from: &str, to: &str, _args: OpCopy) -> Result<RpCopy> {
+        self.core.copy(from, to).await?;
+
+        Ok(RpCopy::default())
     }
 }
