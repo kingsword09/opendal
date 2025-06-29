@@ -202,5 +202,8 @@ pub use webhdfs::*;
 mod yandex_disk;
 pub use yandex_disk::*;
 
+mod opendrive;
+pub use opendrive::*;
+
 #[cfg(target_arch = "wasm32")]
 mod opfs;
