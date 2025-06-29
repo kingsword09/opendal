@@ -123,7 +123,7 @@ pub struct OpendriveGetFolderInfo {
     #[serde(rename = "DateModified")]
     pub date_modified: String,
     #[serde(rename = "ChildFolders")]
-    pub child_folders: usize,
+    pub child_folders: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,5 +149,19 @@ pub struct OpendriveGetListInfo {
 #[serde(untagged)]
 pub enum OpendriveGetListInfoResponse {
     Success(OpendriveGetListInfo),
+    Fail(OpendriveDeserializeFailError),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OpendriveRenameFolderResponse {
+    Success(OpendriveGetFolderInfo),
+    Fail(OpendriveDeserializeFailError),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OpendriveRenameFileResponse {
+    Success(OpendriveGetFileInfo),
     Fail(OpendriveDeserializeFailError),
 }

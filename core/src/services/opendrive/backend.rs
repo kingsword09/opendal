@@ -234,4 +234,10 @@ impl Access for OpendriveAccessor {
         let bs = self.core.read(path, args).await?;
         Ok((RpRead::new(), bs))
     }
+
+    async fn rename(&self, from: &str, to: &str, _args: OpRename) -> Result<RpRename> {
+        self.core.rename(from, to).await?;
+
+        Ok(RpRename::default())
+    }
 }

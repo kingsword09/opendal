@@ -69,7 +69,7 @@ impl OpendriveCore {
         signer.sign(url).await
     }
 
-    pub(crate) async fn parse_file_metadata(&self, file: OpendriveGetFileInfo) -> Result<Metadata> {
+    async fn parse_file_metadata(&self, file: OpendriveGetFileInfo) -> Result<Metadata> {
         // Parse since time once for both time-based conditions
         let last_modified = parse_datetime_from_from_timestamp(
             file.date_modified.parse().map_err(parse_i64_error)?,
@@ -85,7 +85,7 @@ impl OpendriveCore {
         Ok(metadata)
     }
 
-    pub(crate) async fn parse_folder_metadata(
+    async fn parse_folder_metadata(
         &self,
         folder: OpendriveGetFolderInfo,
     ) -> Result<Metadata> {
@@ -101,7 +101,7 @@ impl OpendriveCore {
         Ok(metadata)
     }
 
-    pub(crate) async fn get_folder_id(&self, path: &str) -> Result<String> {
+    async fn get_folder_id(&self, path: &str) -> Result<String> {
         let url = format!("{}/folder/idbypath.json", constants::OPENDRIVE_BASE_URL);
         let url = self.sign(&url).await?;
 
@@ -135,7 +135,7 @@ impl OpendriveCore {
         }
     }
 
-    pub(crate) async fn get_folder_info(&self, folder_id: &str) -> Result<OpendriveGetFolderInfo> {
+    async fn get_folder_info(&self, folder_id: &str) -> Result<OpendriveGetFolderInfo> {
         let url = format!(
             "{}/folder/info.json/{}/{}",
             constants::OPENDRIVE_BASE_URL,
@@ -169,7 +169,7 @@ impl OpendriveCore {
         }
     }
 
-    pub(crate) async fn get_file_id(&self, path: &str) -> Result<String> {
+    async fn get_file_id(&self, path: &str) -> Result<String> {
         let url = format!("{}/file/idbypath.json", constants::OPENDRIVE_BASE_URL);
         let url = self.sign(&url).await?;
 
@@ -203,7 +203,7 @@ impl OpendriveCore {
         }
     }
 
-    pub(crate) async fn get_file_info(&self, file_id: &str) -> Result<OpendriveGetFileInfo> {
+    async fn get_file_info(&self, file_id: &str) -> Result<OpendriveGetFileInfo> {
         let url = format!(
             "{}/file/info.json/{}",
             constants::OPENDRIVE_BASE_URL,
@@ -238,7 +238,7 @@ impl OpendriveCore {
         }
     }
 
-    pub(crate) async fn create_folder(
+    async fn create_folder(
         &self,
         name: &str,
         path: &str,
@@ -287,7 +287,7 @@ impl OpendriveCore {
         }
     }
 
-    pub(crate) async fn get_list_info(&self, folder_id: &str) -> Result<OpendriveGetListInfo> {
+    async fn get_list_info(&self, folder_id: &str) -> Result<OpendriveGetListInfo> {
         let url = format!(
             "{}/folder/list.json/{}/{}",
             constants::OPENDRIVE_BASE_URL,
@@ -321,7 +321,7 @@ impl OpendriveCore {
         }
     }
 
-    pub(crate) async fn recursive_list(
+    async fn recursive_list(
         &self,
         folder: OpendriveGetFolderInfo,
         parent: &str,
@@ -343,6 +343,97 @@ impl OpendriveCore {
         }
 
         Ok((files, folders))
+    }
+
+    async fn rename_folder(&self, from: &str, to: &str) -> Result<()> {
+        let from = build_abs_path(&self.root, from);
+        let to = build_abs_path(&self.root, to);
+
+        if from == build_abs_path(&self.root, "") || to == build_abs_path(&self.root, "") {
+            return Err(Error::new(
+                ErrorKind::Unsupported,
+                "renaming root directory is not supported",
+            ));
+        }
+
+        let folder_id = self.get_folder_id(&from).await?;
+        let folder_name = get_basename(&to);
+
+        let url = format!("{}/folder/rename.json", constants::OPENDRIVE_BASE_URL);
+        let url = self.sign(&url).await?;
+
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "folder_id": &folder_id,
+            "folder_name": &folder_name
+        });
+
+        let req = Request::post(&url)
+            .extension(Operation::Rename)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        let parsed_res: Result<OpendriveRenameFolderResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveRenameFolderResponse::Success(_) => Ok(()),
+                OpendriveRenameFolderResponse::Fail(result) => {
+                    if result.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                }
+            },
+            Err(err) => Err(new_json_deserialize_error(err)),
+        }
+    }
+
+    async fn rename_file(&self, from: &str, to: &str) -> Result<()> {
+        let from = build_abs_path(&self.root, from);
+        let to = build_abs_path(&self.root, to);
+
+        let file_id = self.get_file_id(&from).await?;
+        let file_name = get_basename(&to);
+
+        let url = format!("{}/file/rename.json", constants::OPENDRIVE_BASE_URL);
+        let url = self.sign(&url).await?;
+
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "file_id": &file_id,
+            "new_file_name": &file_name
+        });
+
+        let req = Request::post(&url)
+            .extension(Operation::Rename)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        let parsed_res: Result<OpendriveRenameFileResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveRenameFileResponse::Success(_) => Ok(()),
+                OpendriveRenameFileResponse::Fail(result) => {
+                    if result.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                }
+            },
+            Err(err) => Err(new_json_deserialize_error(err)),
+        }
     }
 }
 
@@ -548,6 +639,18 @@ impl OpendriveCore {
         Ok(body)
     }
 
+    pub(crate) async fn rename(&self, from: &str, to: &str) -> Result<()> {
+        let path = build_abs_path(&self.root, from);
+
+        let metadata = self.stat(&path, None).await?;
+
+        if metadata.is_file() {
+            self.rename_file(from, to).await
+        } else {
+            self.rename_folder(from, to).await
+        }
+    }
+
     pub(crate) async fn list(&self, path: &str, args: OpList) -> Result<Vec<Entry>> {
         let path = build_abs_path(&self.root, path);
 
@@ -577,7 +680,7 @@ impl OpendriveCore {
                     .get_folder_info(folder_entry.metadata().etag().unwrap_or(""))
                     .await
                 {
-                    if folder_info.child_folders > 0 {
+                    if folder_info.child_folders.unwrap_or_default() > 0 {
                         let (child_files, child_folders) = self
                             .recursive_list(folder_info, &folder_entry.path())
                             .await?;
