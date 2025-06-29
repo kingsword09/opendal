@@ -20,29 +20,13 @@ use std::fmt::Formatter;
 use std::sync::Arc;
 
 use super::core::OpendriveCore;
-use chrono::DateTime;
-use chrono::Utc;
-use http::StatusCode;
 use log::debug;
 // use services::onedrive::core::OneDriveCore;
 // use services::onedrive::core::OneDriveSigner;
 use tokio::sync::Mutex;
 
-use crate::raw::normalize_root;
-use crate::raw::parse_datetime_from_from_timestamp;
-use crate::raw::Access;
-use crate::raw::AccessorInfo;
-use crate::raw::HttpBody;
-use crate::raw::HttpClient;
-use crate::raw::OpCreateDir;
-use crate::raw::OpRead;
-use crate::raw::OpStat;
-use crate::raw::RpCreateDir;
-use crate::raw::RpRead;
-use crate::raw::RpStat;
+use crate::raw::*;
 use crate::services::opendrive::core::OpendriveSigner;
-use crate::services::opendrive::error::parse_error;
-use crate::services::opendrive::error::parse_i64_error;
 use crate::services::OpendriveConfig;
 use crate::Scheme;
 use crate::*;
@@ -223,7 +207,7 @@ impl Debug for OpendriveAccessor {
 }
 
 impl Access for OpendriveAccessor {
-    type Reader = HttpBody;
+    type Reader = Buffer;
     // type Writer = oio::OneShotWriter<OneDriveWriter>;
     // type Lister = oio::PageLister<OneDriveLister>;
     // type Deleter = oio::OneShotDeleter<OneDriveDeleter>;
@@ -236,146 +220,18 @@ impl Access for OpendriveAccessor {
     }
 
     async fn create_dir(&self, path: &str, _args: OpCreateDir) -> Result<RpCreateDir> {
-        _ = self.core.opendrive_create_dir(path).await?;
+        self.core.opendrive_create_dir(path).await?;
         Ok(RpCreateDir::default())
     }
 
     async fn stat(&self, path: &str, args: OpStat) -> Result<RpStat> {
-        // Try to get file info first
-        match self.core.get_folder_id(path).await {
-            Ok(folder_id) => {
-                let result = self.core.get_folder_info(&folder_id).await?;
+        let metadata = self.core.stat(path, Some(args)).await?;
 
-                // Check if_match condition
-                if let Some(if_match) = &args.if_match() {
-                    if if_match != &folder_id {
-                        return Err(Error::new(
-                            ErrorKind::ConditionNotMatch,
-                            "doesn't match the condition if_match",
-                        ));
-                    }
-                }
-
-                // Check if_none_match condition
-                if let Some(if_none_match) = &args.if_none_match() {
-                    if if_none_match == &folder_id {
-                        return Err(Error::new(
-                            ErrorKind::ConditionNotMatch,
-                            "doesn't match the condition if_none_match",
-                        ));
-                    }
-                }
-
-                // Parse since time once for both time-based conditions
-                let last_modified = parse_datetime_from_from_timestamp(
-                    result.date_modified.parse().map_err(parse_i64_error)?,
-                )
-                .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
-
-                // Check modified_since condition
-                if let Some(modified_since) = &args.if_modified_since() {
-                    if !last_modified.gt(modified_since) {
-                        return Err(Error::new(
-                            ErrorKind::ConditionNotMatch,
-                            "doesn't match the condition if_modified_since",
-                        ));
-                    }
-                }
-
-                // Check unmodified_since condition
-                if let Some(unmodified_since) = &args.if_unmodified_since() {
-                    if !last_modified.le(unmodified_since) {
-                        return Err(Error::new(
-                            ErrorKind::ConditionNotMatch,
-                            "doesn't match the condition if_unmodified_since",
-                        ));
-                    }
-                }
-
-                let metadata = Metadata::new(EntryMode::DIR)
-                    .with_last_modified(last_modified)
-                    .with_etag(folder_id);
-
-                return Ok(RpStat::new(metadata));
-            }
-            Err(err) => {
-                // If not found as file, try folder
-                if matches!(err.kind(), ErrorKind::NotFound) {
-                    let file_id = self.core.get_file_id(path).await?;
-
-                    let result = self.core.get_file_info(&file_id).await?;
-
-                    // Check if_match condition
-                    if let Some(if_match) = &args.if_match() {
-                        if if_match != &file_id {
-                            return Err(Error::new(
-                                ErrorKind::ConditionNotMatch,
-                                "doesn't match the condition if_match",
-                            ));
-                        }
-                    }
-
-                    // Check if_none_match condition
-                    if let Some(if_none_match) = &args.if_none_match() {
-                        if if_none_match == &file_id {
-                            return Err(Error::new(
-                                ErrorKind::ConditionNotMatch,
-                                "doesn't match the condition if_none_match",
-                            ));
-                        }
-                    }
-
-                    // Parse since time once for both time-based conditions
-                    let last_modified = parse_datetime_from_from_timestamp(
-                        result.date_modified.parse().map_err(parse_i64_error)?,
-                    )
-                    .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
-
-                    // Check modified_since condition
-                    if let Some(modified_since) = &args.if_modified_since() {
-                        if !last_modified.gt(modified_since) {
-                            return Err(Error::new(
-                                ErrorKind::ConditionNotMatch,
-                                "doesn't match the condition if_modified_since",
-                            ));
-                        }
-                    }
-
-                    // Check unmodified_since condition
-                    if let Some(unmodified_since) = &args.if_unmodified_since() {
-                        if !last_modified.le(unmodified_since) {
-                            return Err(Error::new(
-                                ErrorKind::ConditionNotMatch,
-                                "doesn't match the condition if_unmodified_since",
-                            ));
-                        }
-                    }
-
-                    // Check unmodified_since condition
-                    if let Some(version) = &args.version() {
-                        if version != &result.version {
-                            return Err(Error::new(
-                                ErrorKind::ConditionNotMatch,
-                                "doesn't match the condition version",
-                            ));
-                        }
-                    }
-
-                    let metadata = Metadata::new(EntryMode::FILE)
-                        .with_last_modified(last_modified)
-                        .with_version(result.version)
-                        .with_etag(file_id)
-                        .with_content_length(result.size.parse().map_err(parse_i64_error)?);
-
-                    return Ok(RpStat::new(metadata));
-                } else {
-                    Err(err)
-                }
-            }
-        }
+        Ok(RpStat::new(metadata))
     }
 
-    // async fn read(&self, path: &str, args: OpRead) -> Result<(RpRead, Reader)> {
-
-    // }
+    async fn read(&self, path: &str, args: OpRead) -> Result<(RpRead, Self::Reader)> {
+        let bs = self.core.read(path, args).await?;
+        Ok((RpRead::new(), bs))
+    }
 }

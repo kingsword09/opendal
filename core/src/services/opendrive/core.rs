@@ -30,15 +30,8 @@ use tokio::sync::Mutex;
 
 use super::error::parse_error;
 use crate::raw::*;
-use crate::services::opendrive::model::OAuthGrantType;
-use crate::services::opendrive::model::OAuthTokenResponseBody;
-use crate::services::opendrive::model::OpendriveCreateDirResponse;
-use crate::services::opendrive::model::OpendriveGetFileIdResponse;
-use crate::services::opendrive::model::OpendriveGetFileInfo;
-use crate::services::opendrive::model::OpendriveGetFileInfoResponse;
-use crate::services::opendrive::model::OpendriveGetFolderIdResponse;
-use crate::services::opendrive::model::OpendriveGetFolderInfo;
-use crate::services::opendrive::model::OpendriveGetFolderInfoResponse;
+use crate::services::opendrive::error::parse_i64_error;
+use crate::services::opendrive::model::*;
 use crate::*;
 
 pub mod constants {
@@ -50,6 +43,9 @@ pub mod constants {
 
     // OAUTH 2.0 Session Id
     pub(crate) const OPENDRIVE_SESSION_ID: &str = "OAUTH";
+
+    // root folder id
+    pub(crate) const OPENDRIVE_ROOT_FOLDER_ID: u8 = 0;
 }
 
 pub struct OpendriveCore {
@@ -71,6 +67,38 @@ impl OpendriveCore {
     pub(crate) async fn sign(&self, url: &str) -> Result<String> {
         let mut signer = self.signer.lock().await;
         signer.sign(url).await
+    }
+
+    pub(crate) async fn parse_file_metadata(&self, file: OpendriveGetFileInfo) -> Result<Metadata> {
+        // Parse since time once for both time-based conditions
+        let last_modified = parse_datetime_from_from_timestamp(
+            file.date_modified.parse().map_err(parse_i64_error)?,
+        )
+        .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
+
+        let metadata = Metadata::new(EntryMode::FILE)
+            .with_last_modified(last_modified)
+            .with_version(file.version)
+            .with_etag(file.file_id)
+            .with_content_length(file.size.parse().map_err(parse_i64_error)?);
+
+        Ok(metadata)
+    }
+
+    pub(crate) async fn parse_folder_metadata(
+        &self,
+        folder: OpendriveGetFolderInfo,
+    ) -> Result<Metadata> {
+        let last_modified = parse_datetime_from_from_timestamp(
+            folder.date_modified.parse().map_err(parse_i64_error)?,
+        )
+        .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
+
+        let metadata = Metadata::new(EntryMode::DIR)
+            .with_last_modified(last_modified)
+            .with_etag(folder.folder_id);
+
+        Ok(metadata)
     }
 
     pub(crate) async fn get_folder_id(&self, path: &str) -> Result<String> {
@@ -258,6 +286,64 @@ impl OpendriveCore {
             Err(err) => Err(new_json_deserialize_error(err)),
         }
     }
+
+    pub(crate) async fn get_list_info(&self, folder_id: &str) -> Result<OpendriveGetListInfo> {
+        let url = format!(
+            "{}/folder/list.json/{}/{}",
+            constants::OPENDRIVE_BASE_URL,
+            constants::OPENDRIVE_SESSION_ID,
+            folder_id
+        );
+        let url = self.sign(&url).await?;
+
+        let req = Request::get(&url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::new())
+            .map_err(new_request_build_error)?;
+
+        let res = self.info.http_client().send(req).await?;
+
+        let parsed_res: Result<OpendriveGetListInfoResponse, serde_json::Error> =
+            serde_json::from_reader(res.body().clone().reader());
+
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveGetListInfoResponse::Success(result) => Ok(result),
+                OpendriveGetListInfoResponse::Fail(result) => {
+                    if result.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                }
+            },
+            Err(err) => Err(new_json_deserialize_error(err)),
+        }
+    }
+
+    pub(crate) async fn recursive_list(
+        &self,
+        folder: OpendriveGetFolderInfo,
+        parent: &str,
+    ) -> Result<(Vec<Entry>, Vec<Entry>)> {
+        let mut files = vec![];
+        let mut folders = vec![];
+        let res = self.get_list_info(&folder.folder_id).await?;
+
+        for info in res.files {
+            let metadata = self.parse_file_metadata(info.clone()).await?;
+            let path = build_abs_path(parent, &info.name);
+            files.push(Entry::new(path, metadata));
+        }
+
+        for info in res.folders {
+            let metadata = self.parse_folder_metadata(info.clone()).await?;
+            let path = build_abs_path(parent, &info.name);
+            folders.push(Entry::new(path, metadata));
+        }
+
+        Ok((files, folders))
+    }
 }
 
 // `services-opendrive` rest api guide
@@ -291,38 +377,221 @@ impl OpendriveCore {
         Ok(())
     }
 
-    pub(crate) async fn list(&self, folder_id: &str, args: OpList) -> Result<String> {
+    pub(crate) async fn stat(&self, path: &str, args: Option<OpStat>) -> Result<Metadata> {
+        match self.get_folder_id(path).await {
+            Ok(folder_id) => {
+                let result = self.get_folder_info(&folder_id).await?;
+
+                // Parse since time once for both time-based conditions
+                let last_modified = parse_datetime_from_from_timestamp(
+                    result.date_modified.parse().map_err(parse_i64_error)?,
+                )
+                .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
+
+                if let Some(args) = args {
+                    // Check if_match condition
+                    if let Some(if_match) = &args.if_match() {
+                        if if_match != &folder_id {
+                            return Err(Error::new(
+                                ErrorKind::ConditionNotMatch,
+                                "doesn't match the condition if_match",
+                            ));
+                        }
+                    }
+
+                    // Check if_none_match condition
+                    if let Some(if_none_match) = &args.if_none_match() {
+                        if if_none_match == &folder_id {
+                            return Err(Error::new(
+                                ErrorKind::ConditionNotMatch,
+                                "doesn't match the condition if_none_match",
+                            ));
+                        }
+                    }
+
+                    // Check modified_since condition
+                    if let Some(modified_since) = &args.if_modified_since() {
+                        if !last_modified.gt(modified_since) {
+                            return Err(Error::new(
+                                ErrorKind::ConditionNotMatch,
+                                "doesn't match the condition if_modified_since",
+                            ));
+                        }
+                    }
+
+                    // Check unmodified_since condition
+                    if let Some(unmodified_since) = &args.if_unmodified_since() {
+                        if !last_modified.le(unmodified_since) {
+                            return Err(Error::new(
+                                ErrorKind::ConditionNotMatch,
+                                "doesn't match the condition if_unmodified_since",
+                            ));
+                        }
+                    }
+                }
+
+                Ok(self.parse_folder_metadata(result).await?)
+            }
+            Err(err) => {
+                // If not found as file, try folder
+                if matches!(err.kind(), ErrorKind::NotFound) {
+                    let file_id = self.get_file_id(path).await?;
+
+                    let result = self.get_file_info(&file_id).await?;
+
+                    // Parse since time once for both time-based conditions
+                    let last_modified = parse_datetime_from_from_timestamp(
+                        result.date_modified.parse().map_err(parse_i64_error)?,
+                    )
+                    .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
+
+                    if let Some(args) = args {
+                        // Check if_match condition
+                        if let Some(if_match) = &args.if_match() {
+                            if if_match != &file_id {
+                                return Err(Error::new(
+                                    ErrorKind::ConditionNotMatch,
+                                    "doesn't match the condition if_match",
+                                ));
+                            }
+                        }
+
+                        // Check if_none_match condition
+                        if let Some(if_none_match) = &args.if_none_match() {
+                            if if_none_match == &file_id {
+                                return Err(Error::new(
+                                    ErrorKind::ConditionNotMatch,
+                                    "doesn't match the condition if_none_match",
+                                ));
+                            }
+                        }
+
+                        // Check modified_since condition
+                        if let Some(modified_since) = &args.if_modified_since() {
+                            if !last_modified.gt(modified_since) {
+                                return Err(Error::new(
+                                    ErrorKind::ConditionNotMatch,
+                                    "doesn't match the condition if_modified_since",
+                                ));
+                            }
+                        }
+
+                        // Check unmodified_since condition
+                        if let Some(unmodified_since) = &args.if_unmodified_since() {
+                            if !last_modified.le(unmodified_since) {
+                                return Err(Error::new(
+                                    ErrorKind::ConditionNotMatch,
+                                    "doesn't match the condition if_unmodified_since",
+                                ));
+                            }
+                        }
+
+                        // Check unmodified_since condition
+                        if let Some(version) = &args.version() {
+                            if version != &result.version {
+                                return Err(Error::new(
+                                    ErrorKind::ConditionNotMatch,
+                                    "doesn't match the condition version",
+                                ));
+                            }
+                        }
+                    }
+
+                    Ok(self.parse_file_metadata(result).await?)
+                } else {
+                    Err(err)
+                }
+            }
+        }
+    }
+
+    pub(crate) async fn read(&self, path: &str, args: OpRead) -> Result<Buffer> {
+        let metadata = self.stat(path, None).await?;
+
+        if metadata.is_dir() {
+            return Err(Error::new(ErrorKind::IsADirectory, "path should be a file"));
+        }
+
+        let file_id = if metadata.etag().is_some() {
+            metadata.etag().unwrap()
+        } else {
+            &self.get_file_id(path).await?
+        };
+
         let url = format!(
-            "{}/folder/list.json/{}/{}",
+            "{}/download/file.json/{}",
             constants::OPENDRIVE_BASE_URL,
-            constants::OPENDRIVE_SESSION_ID,
-            folder_id
+            file_id
         );
         let url = self.sign(&url).await?;
+        let mut url = QueryPairsWriter::new(&url);
 
-        let req = Request::get(&url)
-            .header(header::CONTENT_TYPE, "application/json")
+        let range = args.range();
+        url = url.push("session_id", constants::OPENDRIVE_SESSION_ID);
+        url = url.push("offset", &range.offset().to_string());
+
+        let req = Request::get(url.finish().to_string())
+            .extension(Operation::Read)
+            .header(header::CONTENT_TYPE, "application/octet-stream")
+            .header(header::RANGE, range.to_header())
             .body(Buffer::new())
             .map_err(new_request_build_error)?;
 
         let res = self.info.http_client().send(req).await?;
 
-        let parsed_res: Result<OpendriveGetFileIdResponse, serde_json::Error> =
-            serde_json::from_reader(res.body().clone().reader());
-
-        match parsed_res {
-            Ok(parsed_res) => match parsed_res {
-                OpendriveGetFileIdResponse::Success(result) => Ok(result.file_id),
-                OpendriveGetFileIdResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
-                    }
-
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
-                }
-            },
-            Err(err) => Err(new_json_deserialize_error(err)),
+        let mut body = res.into_body();
+        if let Some(size) = range.size() {
+            let slice_end = body.len().min(size as usize);
+            body = body.slice(0..slice_end);
         }
+
+        Ok(body)
+    }
+
+    pub(crate) async fn list(&self, path: &str, args: OpList) -> Result<Vec<Entry>> {
+        let path = build_abs_path(&self.root, path);
+
+        let folder_id = if path == build_abs_path(&self.root, "") {
+            "0"
+        } else {
+            &self.get_folder_id(&path).await?
+        };
+
+        let mut entry_list = vec![];
+
+        let info = self.get_folder_info(folder_id).await?;
+        let metadata = self.parse_folder_metadata(info.clone()).await?;
+        entry_list.push(Entry::new(path.clone(), metadata));
+
+        let (files, folders) = self.recursive_list(info, &path).await?;
+        entry_list.extend(files);
+
+        // Only process folders recursively if requested
+        if args.recursive() {
+            let mut folders_to_process = folders.clone();
+            entry_list.extend(folders);
+
+            // Process folders that have children
+            while let Some(folder_entry) = folders_to_process.pop() {
+                if let Ok(folder_info) = self
+                    .get_folder_info(folder_entry.metadata().etag().unwrap_or(""))
+                    .await
+                {
+                    if folder_info.child_folders > 0 {
+                        let (child_files, child_folders) = self
+                            .recursive_list(folder_info, &folder_entry.path())
+                            .await?;
+                        entry_list.extend(child_files);
+                        entry_list.extend(child_folders.clone());
+                        folders_to_process.extend(child_folders);
+                    }
+                }
+            }
+        } else {
+            entry_list.extend(folders);
+        }
+
+        Ok(entry_list)
     }
 }
 

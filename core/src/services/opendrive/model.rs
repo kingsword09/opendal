@@ -91,7 +91,7 @@ pub enum OpendriveGetFileIdResponse {
     Fail(OpendriveDeserializeFailError),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct OpendriveGetFileInfo {
     #[serde(rename = "FileId")]
     pub file_id: String,
@@ -114,7 +114,7 @@ pub enum OpendriveGetFileInfoResponse {
     Fail(OpendriveDeserializeFailError),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct OpendriveGetFolderInfo {
     #[serde(rename = "FolderID")]
     pub folder_id: String,
@@ -122,6 +122,8 @@ pub struct OpendriveGetFolderInfo {
     pub name: String,
     #[serde(rename = "DateModified")]
     pub date_modified: String,
+    #[serde(rename = "ChildFolders")]
+    pub child_folders: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -131,16 +133,21 @@ pub enum OpendriveGetFolderInfoResponse {
     Fail(OpendriveDeserializeFailError),
 }
 
-pub struct OpendriveGetListInfo {}
+#[derive(Debug, Deserialize)]
+pub struct OpendriveGetListInfo {
+    #[serde(rename = "Name")]
+    pub name: String,
+    #[serde(rename = "ParentFolderID")]
+    pub parent_folder_id: String,
+    #[serde(rename = "Folders")]
+    pub folders: Vec<OpendriveGetFolderInfo>,
+    #[serde(rename = "Files")]
+    pub files: Vec<OpendriveGetFileInfo>,
+}
 
-// [{
-//     "FolderID":"MzVfNjI2OTMzOF9UdUV1Uw",
-//     "Name":"test",
-//     "SubFolders":
-//     [{
-//         "FolderID":"MzVfNjI2OTMzOV96QXVxZw",
-//         "Link":"https://od.lk/fl/MzVfNjI2OTMzOV8",
-//         "Name":"xx",
-//         "ChildFolders":0
-//     }]}
-//     ]
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OpendriveGetListInfoResponse {
+    Success(OpendriveGetListInfo),
+    Fail(OpendriveDeserializeFailError),
+}
