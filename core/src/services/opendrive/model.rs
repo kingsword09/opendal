@@ -158,3 +158,15 @@ pub enum OpendriveSuccessIgnoreResponse {
     Success,
     Fail(OpendriveDeserializeFailError),
 }
+
+#[derive(Debug, Deserialize)]
+pub struct OpendriveCheckIfExists {
+    pub result: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OpendriveCheckIfExistsResponse {
+    Success(OpendriveCheckIfExists),
+    Fail(OpendriveDeserializeFailError),
+}

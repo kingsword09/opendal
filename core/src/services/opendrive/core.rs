@@ -45,8 +45,8 @@ pub mod constants {
     // OAUTH 2.0 Session Id
     pub(crate) const OPENDRIVE_SESSION_ID: &str = "OAUTH";
 
-    // root folder id
-    pub(crate) const OPENDRIVE_ROOT_FOLDER_ID: u8 = 0;
+    // opendrive root:/ folder id
+    pub(crate) const OPENDRIVE_SLASH_ROOT_FOLDER_ID: &str = "0";
 }
 
 pub struct OpendriveCore {
@@ -100,6 +100,10 @@ impl OpendriveCore {
     }
 
     async fn get_folder_id(&self, path: &str) -> Result<String> {
+        if path == "/" {
+            return Ok(constants::OPENDRIVE_SLASH_ROOT_FOLDER_ID.to_string());
+        }
+
         let url = format!("{}/folder/idbypath.json", constants::OPENDRIVE_BASE_URL);
         let url = self.sign(&url).await?;
 
@@ -567,6 +571,85 @@ impl OpendriveCore {
 
         self.parse_response_unit(resp).await
     }
+
+    async fn check_if_file_exists(&self, path: &str) -> Result<()> {
+        let path = build_abs_path(&self.root, path);
+
+        let parent = get_parent(&path);
+        let file_name = get_basename(&path);
+
+        let folder_id = self.get_folder_id(parent).await?;
+
+        let url = format!(
+            "{}/upload/checkfileexistsbyname.json/{}",
+            constants::OPENDRIVE_BASE_URL,
+            &folder_id
+        );
+        let url = self.sign(&url).await?;
+
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "name": vec![file_name]
+        });
+
+        let req = Request::post(&url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        let parsed_res: Result<OpendriveCheckIfExistsResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveCheckIfExistsResponse::Success(result) => {
+                    if result.result.len() > 0 {
+                        Ok(())
+                    } else {
+                        Err(Error::new(
+                            ErrorKind::NotFound,
+                            format!("{} no found", file_name),
+                        ))
+                    }
+                }
+                OpendriveCheckIfExistsResponse::Fail(result) => {
+                    if result.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                }
+            },
+            Err(err) => Err(new_json_deserialize_error(err)),
+        }
+    }
+
+    async fn create_file(&self, path: &str) -> Result<()> {
+        let parent = get_parent(path);
+        let file_name = get_basename(path);
+
+        let folder_id = self.get_folder_id(parent).await?;
+
+        let url = format!("{}/upload/create_file.json", constants::OPENDRIVE_BASE_URL);
+        let url = self.sign(&url).await?;
+
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "folder_id": &folder_id,
+            "file_name": &file_name,
+            // (1) - file info will be returned if file already exists,
+            // (0) - error 409 will be returned if file already exists.
+            "open_if_exists": 1
+        });
+
+        let req = Request::post(&url).header(header::CONTENT_TYPE, "application/json").body(Buffer::from(body.to_string())).map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        self.parse_response_unit(resp).await
+    }
 }
 
 // `services-opendrive` rest api guide
@@ -798,7 +881,7 @@ impl OpendriveCore {
         let metadata = self.stat(&path, None).await?;
 
         if version.is_some() && metadata.version() != version {
-            return Err(Error::new(ErrorKind::ConditionNotMatch, "version mismatch"))
+            return Err(Error::new(ErrorKind::ConditionNotMatch, "version mismatch"));
         }
 
         if metadata.is_file() {

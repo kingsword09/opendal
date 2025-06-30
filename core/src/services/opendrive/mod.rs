@@ -19,12 +19,8 @@
 mod backend;
 #[cfg(feature = "services-opendrive")]
 mod core;
-// #[cfg(feature = "services-opendrive")]
-// mod delete;
 #[cfg(feature = "services-opendrive")]
 mod error;
-// #[cfg(feature = "services-opendrive")]
-// mod graph_model;
 // #[cfg(feature = "services-opendrive")]
 // mod lister;
 // #[cfg(feature = "services-opendrive")]
