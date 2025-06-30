@@ -881,12 +881,12 @@ pub struct OpendriveSigner {
 }
 
 impl OpendriveSigner {
-    pub fn new(info: Arc<AccessorInfo>) -> Self {
+    pub fn new(info: Arc<AccessorInfo>, username: &str, password: &str) -> Self {
         OpendriveSigner {
             info,
 
-            username: "".to_string(),
-            password: "".to_string(),
+            username: username.to_string(),
+            password: password.to_string(),
             refresh_token: "".to_string(),
             access_token: "".to_string(),
             expires_in: DateTime::<Utc>::MIN_UTC,

@@ -145,6 +145,20 @@ impl Builder for OpendriveBuilder {
         let root = normalize_root(&self.config.root.unwrap_or_default());
         debug!("backend use root {root}");
 
+        let username = match self.config.username {
+            Some(username) => username,
+            None => return Err(Error::new(ErrorKind::ConfigInvalid, "username is empty")
+                .with_operation("Builder::build")
+                .with_context("service", Scheme::Opendrive))
+        };
+
+        let password = match self.config.password {
+            Some(password) => password,
+            None => return Err(Error::new(ErrorKind::ConfigInvalid, "password is empty")
+                .with_operation("Builder::build")
+                .with_context("service", Scheme::Opendrive))
+        };
+
         let info = AccessorInfo::default();
         info.set_scheme(Scheme::Onedrive)
             .set_root(&root)
@@ -162,7 +176,6 @@ impl Builder for OpendriveBuilder {
 
                 // write: true,
                 // write_with_if_match: true,
-
                 stat: true,
                 stat_with_if_match: true,
                 stat_with_if_none_match: true,
@@ -185,7 +198,11 @@ impl Builder for OpendriveBuilder {
         }
 
         let accessor_info = Arc::new(info);
-        let mut signer = OpendriveSigner::new(accessor_info.clone());
+        let signer = OpendriveSigner::new(
+            accessor_info.clone(),
+            &username,
+            &password,
+        );
 
         let core = Arc::new(OpendriveCore {
             info: accessor_info,
