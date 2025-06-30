@@ -147,11 +147,11 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveGetFolderIdResponse::Success(result) => Ok(result.folder_id),
                 OpendriveGetFolderIdResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),
@@ -181,11 +181,11 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveGetFolderInfoResponse::Success(result) => Ok(result),
                 OpendriveGetFolderInfoResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),
@@ -215,11 +215,11 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveGetFileIdResponse::Success(result) => Ok(result.file_id),
                 OpendriveGetFileIdResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),
@@ -250,11 +250,11 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveGetFileInfoResponse::Success(result) => Ok(result),
                 OpendriveGetFileInfoResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),
@@ -298,12 +298,12 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveCreateDirResponse::Success(result) => Ok(result.folder_id),
                 OpendriveCreateDirResponse::Fail(result) => {
-                    if result.code == 409 {
+                    if result.error.code == 409 {
                         let folder_id = self.get_folder_id(path).await?;
                         return Ok(folder_id);
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),
@@ -333,11 +333,11 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveGetListInfoResponse::Success(result) => Ok(result),
                 OpendriveGetListInfoResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),
@@ -376,13 +376,13 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveSuccessIgnoreResponse::Success => Ok(()),
                 OpendriveSuccessIgnoreResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
-                    } else if result.code == 409 {
-                        return Err(Error::new(ErrorKind::AlreadyExists, result.message));
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
+                    } else if result.error.code == 409 {
+                        return Err(Error::new(ErrorKind::AlreadyExists, result.error.message));
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),
@@ -635,11 +635,11 @@ impl OpendriveCore {
                     }
                 }
                 OpendriveCheckIfExistsResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),
@@ -679,11 +679,11 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveCreateFileResponse::Success(result) => Ok(result),
                 OpendriveCreateFileResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),
@@ -722,11 +722,11 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveOpenFileUploadResponse::Success(result) => Ok(result),
                 OpendriveOpenFileUploadResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),
@@ -850,11 +850,11 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveCloseFileUploadResponse::Success(result) => Ok(result),
                 OpendriveCloseFileUploadResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
                     }
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
                 }
             },
             Err(err) => Err(new_json_deserialize_error(err)),

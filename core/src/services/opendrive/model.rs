@@ -37,7 +37,7 @@ pub struct OAuthTokenResponseBody {
 #[serde(untagged)]
 pub enum OpendriveCreateDirResponse {
     Success(OpendriveCreateDirSuccess),
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,7 +75,7 @@ pub struct OpendriveGetFolderId {
 #[serde(untagged)]
 pub enum OpendriveGetFolderIdResponse {
     Success(OpendriveGetFolderId),
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,7 +88,7 @@ pub struct OpendriveGetFileId {
 #[serde(untagged)]
 pub enum OpendriveGetFileIdResponse {
     Success(OpendriveGetFileId),
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -111,7 +111,7 @@ pub struct OpendriveGetFileInfo {
 #[serde(untagged)]
 pub enum OpendriveGetFileInfoResponse {
     Success(OpendriveGetFileInfo),
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,7 +130,7 @@ pub struct OpendriveGetFolderInfo {
 #[serde(untagged)]
 pub enum OpendriveGetFolderInfoResponse {
     Success(OpendriveGetFolderInfo),
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,14 +149,14 @@ pub struct OpendriveGetListInfo {
 #[serde(untagged)]
 pub enum OpendriveGetListInfoResponse {
     Success(OpendriveGetListInfo),
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum OpendriveSuccessIgnoreResponse {
     Success,
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
 
 #[derive(Debug, Deserialize)]
@@ -168,7 +168,7 @@ pub struct OpendriveCheckIfExists {
 #[serde(untagged)]
 pub enum OpendriveCheckIfExistsResponse {
     Success(OpendriveCheckIfExists),
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
 
 #[derive(Debug, Deserialize)]
@@ -184,7 +184,7 @@ pub struct OpendriveOpenFileUploadInfo {
 #[serde(untagged)]
 pub enum OpendriveOpenFileUploadResponse {
     Success(OpendriveOpenFileUploadInfo),
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
 
 #[derive(Debug, Deserialize)]
@@ -201,7 +201,7 @@ pub struct OpendriveCloseFileUploadInfo {
 #[serde(untagged)]
 pub enum OpendriveCloseFileUploadResponse {
     Success(OpendriveCloseFileUploadInfo),
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
 
 #[derive(Debug, Deserialize)]
@@ -214,5 +214,5 @@ pub struct OpendriveCreateFileInfo {
 #[serde(untagged)]
 pub enum OpendriveCreateFileResponse {
     Success(OpendriveCreateFileInfo),
-    Fail(OpendriveDeserializeFailError),
+    Fail(OpendriveDeserializeFail),
 }
