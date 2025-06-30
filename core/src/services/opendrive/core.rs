@@ -808,15 +808,17 @@ impl OpendriveCore {
                 &self.get_file_id(&path).await?
             };
 
+            self.trash_file(file_id).await?;
             self.remove_trash_file(file_id).await
         } else {
-            let file_id = if metadata.etag().is_some() {
+            let folder_id = if metadata.etag().is_some() {
                 metadata.etag().unwrap()
             } else {
                 &self.get_folder_id(&path).await?
             };
 
-            self.remove_trash_folder(file_id).await
+            self.trash_folder(folder_id).await?;
+            self.remove_trash_folder(folder_id).await
         }
     }
 
