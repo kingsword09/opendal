@@ -1159,7 +1159,6 @@ impl OpendriveCore {
         &self,
         file_id: &str,
         path: &str,
-        file_size: u64,
         chunk: Buffer,
     ) -> Result<OpendriveCloseFileUploadInfo> {
         let if_exists = self.check_if_file_exists(path).await?;
@@ -1167,6 +1166,8 @@ impl OpendriveCore {
         if !if_exists {
             self.create_file(path).await?;
         }
+
+        let file_size = chunk.len() as u64;
 
         self.open_file_upload(file_id, file_size).await?;
 

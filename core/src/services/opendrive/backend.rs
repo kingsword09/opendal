@@ -171,6 +171,9 @@ impl Builder for OpendriveBuilder {
                 copy: true,
                 rename: true,
 
+                delete: true,
+                delete_with_version: true,
+
                 read: true,
                 read_with_if_match: true,
                 read_with_if_none_match: true,
@@ -178,8 +181,6 @@ impl Builder for OpendriveBuilder {
                 read_with_if_unmodified_since: true,
                 read_with_version: true,
 
-                // write: true,
-                // write_with_if_match: true,
                 stat: true,
                 stat_with_if_match: true,
                 stat_with_if_none_match: true,
@@ -187,9 +188,17 @@ impl Builder for OpendriveBuilder {
                 stat_with_if_unmodified_since: true,
                 stat_with_version: true,
 
-                // delete: true,
-                // list: true,
-                // list_with_limit: true,
+                write: true,
+                write_can_append: true,
+                write_can_empty: true,
+                write_can_multi: true,
+                write_with_if_match: true,
+                write_with_if_none_match: true,
+                write_with_if_not_exists: true,
+
+                list: true,
+                list_with_recursive: true,
+
                 shared: true,
 
                 ..Default::default()
@@ -281,11 +290,7 @@ impl Access for OpendriveAccessor {
         let w = if args.append() {
             OpendriveWriters::Two(oio::AppendWriter::new(writer))
         } else {
-            OpendriveWriters::One(oio::MultipartWriter::new(
-                self.core.info.clone(),
-                writer,
-                args.concurrent(),
-            ))
+            OpendriveWriters::One(oio::OneShotWriter::new(writer))
         };
 
         Ok((RpWrite::default(), w))

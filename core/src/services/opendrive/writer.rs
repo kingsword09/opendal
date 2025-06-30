@@ -17,17 +17,13 @@
 
 use std::sync::Arc;
 
-use bytes::Buf;
-use http::StatusCode;
-
 use super::core::*;
-use crate::raw::oio::MultipartWrite;
 use crate::raw::*;
 use crate::services::opendrive::error::parse_numeric_types_error;
 use crate::*;
 
 pub type OpendriveWriters =
-    TwoWays<oio::MultipartWriter<OpendriveWriter>, oio::AppendWriter<OpendriveWriter>>;
+    TwoWays<oio::OneShotWriter<OpendriveWriter>, oio::AppendWriter<OpendriveWriter>>;
 
 pub struct OpendriveWriter {
     core: Arc<OpendriveCore>,
@@ -46,8 +42,8 @@ impl OpendriveWriter {
     }
 }
 
-impl oio::MultipartWrite for OpendriveWriter {
-    async fn write_once(&self, size: u64, body: Buffer) -> Result<Metadata> {
+impl oio::OneShotWrite for OpendriveWriter {
+    async fn write_once(&self, bs: Buffer) -> Result<Metadata> {
         let path = build_abs_path(&self.core.root, &self.path);
 
         let metadata = self.core.stat(&path, None).await?;
@@ -60,7 +56,7 @@ impl oio::MultipartWrite for OpendriveWriter {
 
         let file_id = self.core.parse_id_by_metadata(&path, metadata).await?;
 
-        let result = self.core.write_once(&file_id, &path, size, body).await?;
+        let result = self.core.write_once(&file_id, &path, bs).await?;
 
         let last_modified = parse_datetime_from_from_timestamp(
             result
@@ -77,38 +73,6 @@ impl oio::MultipartWrite for OpendriveWriter {
             .with_content_length(result.size.parse().map_err(parse_numeric_types_error)?);
 
         Ok(metadata)
-    }
-
-    async fn initiate_part(&self) -> Result<String> {
-        Ok("".to_string())
-    }
-
-    async fn write_part(
-        &self,
-        upload_id: &str,
-        part_number: usize,
-        size: u64,
-        body: Buffer,
-    ) -> Result<oio::MultipartPart> {
-        let part_number = part_number + 1;
-
-        Ok(oio::MultipartPart {
-            part_number,
-            etag: "".to_string(),
-            checksum: Some("".to_string()),
-        })
-    }
-
-    async fn complete_part(
-        &self,
-        upload_id: &str,
-        parts: &[oio::MultipartPart],
-    ) -> Result<Metadata> {
-        Ok(Metadata::new(EntryMode::FILE))
-    }
-
-    async fn abort_part(&self, upload_id: &str) -> Result<()> {
-        Ok(())
     }
 }
 
