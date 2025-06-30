@@ -23,8 +23,8 @@ mod core;
 mod error;
 // #[cfg(feature = "services-opendrive")]
 // mod lister;
-// #[cfg(feature = "services-opendrive")]
-// mod writer;
+#[cfg(feature = "services-opendrive")]
+mod writer;
 #[cfg(feature = "services-opendrive")]
 mod delete;
 #[cfg(feature = "services-opendrive")]

@@ -21,13 +21,13 @@ use std::sync::Arc;
 
 use super::core::OpendriveCore;
 use log::debug;
-// use services::onedrive::core::OneDriveCore;
-// use services::onedrive::core::OneDriveSigner;
 use tokio::sync::Mutex;
 
 use crate::raw::*;
 use crate::services::opendrive::core::OpendriveSigner;
 use crate::services::opendrive::delete::OpendriveDeleter;
+use crate::services::opendrive::writer::OpendriveWriter;
+use crate::services::opendrive::writer::OpendriveWriters;
 use crate::services::OpendriveConfig;
 use crate::Scheme;
 use crate::*;
@@ -147,16 +147,20 @@ impl Builder for OpendriveBuilder {
 
         let username = match self.config.username {
             Some(username) => username,
-            None => return Err(Error::new(ErrorKind::ConfigInvalid, "username is empty")
-                .with_operation("Builder::build")
-                .with_context("service", Scheme::Opendrive))
+            None => {
+                return Err(Error::new(ErrorKind::ConfigInvalid, "username is empty")
+                    .with_operation("Builder::build")
+                    .with_context("service", Scheme::Opendrive))
+            }
         };
 
         let password = match self.config.password {
             Some(password) => password,
-            None => return Err(Error::new(ErrorKind::ConfigInvalid, "password is empty")
-                .with_operation("Builder::build")
-                .with_context("service", Scheme::Opendrive))
+            None => {
+                return Err(Error::new(ErrorKind::ConfigInvalid, "password is empty")
+                    .with_operation("Builder::build")
+                    .with_context("service", Scheme::Opendrive))
+            }
         };
 
         let info = AccessorInfo::default();
@@ -198,11 +202,7 @@ impl Builder for OpendriveBuilder {
         }
 
         let accessor_info = Arc::new(info);
-        let signer = OpendriveSigner::new(
-            accessor_info.clone(),
-            &username,
-            &password,
-        );
+        let signer = OpendriveSigner::new(accessor_info.clone(), &username, &password);
 
         let core = Arc::new(OpendriveCore {
             info: accessor_info,
@@ -232,7 +232,7 @@ impl Access for OpendriveAccessor {
     // type Writer = oio::OneShotWriter<OneDriveWriter>;
     // type Lister = oio::PageLister<OneDriveLister>;
     // type Deleter = oio::OneShotDeleter<OneDriveDeleter>;
-    type Writer = ();
+    type Writer = OpendriveWriters;
     type Lister = ();
     type Deleter = oio::OneShotDeleter<OpendriveDeleter>;
 
@@ -273,5 +273,21 @@ impl Access for OpendriveAccessor {
             RpDelete::default(),
             oio::OneShotDeleter::new(OpendriveDeleter::new(self.core.clone())),
         ))
+    }
+
+    async fn write(&self, path: &str, args: OpWrite) -> Result<(RpWrite, Self::Writer)> {
+        let writer = OpendriveWriter::new(self.core.clone(), path, args.clone());
+
+        let w = if args.append() {
+            OpendriveWriters::Two(oio::AppendWriter::new(writer))
+        } else {
+            OpendriveWriters::One(oio::MultipartWriter::new(
+                self.core.info.clone(),
+                writer,
+                args.concurrent(),
+            ))
+        };
+
+        Ok((RpWrite::default(), w))
     }
 }

@@ -31,7 +31,7 @@ use tokio::sync::Mutex;
 
 use super::error::parse_error;
 use crate::raw::*;
-use crate::services::opendrive::error::parse_i64_error;
+use crate::services::opendrive::error::parse_numeric_types_error;
 use crate::services::opendrive::model::*;
 use crate::*;
 
@@ -73,7 +73,9 @@ impl OpendriveCore {
     async fn parse_file_metadata(&self, file: OpendriveGetFileInfo) -> Result<Metadata> {
         // Parse since time once for both time-based conditions
         let last_modified = parse_datetime_from_from_timestamp(
-            file.date_modified.parse().map_err(parse_i64_error)?,
+            file.date_modified
+                .parse()
+                .map_err(parse_numeric_types_error)?,
         )
         .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
 
@@ -81,14 +83,17 @@ impl OpendriveCore {
             .with_last_modified(last_modified)
             .with_version(file.version)
             .with_etag(file.file_id)
-            .with_content_length(file.size.parse().map_err(parse_i64_error)?);
+            .with_content_length(file.size.parse().map_err(parse_numeric_types_error)?);
 
         Ok(metadata)
     }
 
     async fn parse_folder_metadata(&self, folder: OpendriveGetFolderInfo) -> Result<Metadata> {
         let last_modified = parse_datetime_from_from_timestamp(
-            folder.date_modified.parse().map_err(parse_i64_error)?,
+            folder
+                .date_modified
+                .parse()
+                .map_err(parse_numeric_types_error)?,
         )
         .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
 
@@ -97,6 +102,22 @@ impl OpendriveCore {
             .with_etag(folder.folder_id);
 
         Ok(metadata)
+    }
+
+    pub(crate) async fn parse_id_by_metadata(
+        &self,
+        path: &str,
+        metadata: Metadata,
+    ) -> Result<String> {
+        if metadata.etag().is_some() {
+            Ok(metadata.etag().unwrap().to_string())
+        } else {
+            if metadata.is_file() {
+                Ok(self.get_file_id(path).await?)
+            } else {
+                Ok(self.get_folder_id(path).await?)
+            }
+        }
     }
 
     async fn get_folder_id(&self, path: &str) -> Result<String> {
@@ -357,6 +378,8 @@ impl OpendriveCore {
                 OpendriveSuccessIgnoreResponse::Fail(result) => {
                     if result.code == 404 {
                         return Err(Error::new(ErrorKind::NotFound, result.message));
+                    } else if result.code == 409 {
+                        return Err(Error::new(ErrorKind::AlreadyExists, result.message));
                     }
 
                     Err(Error::new(ErrorKind::Unexpected, result.message))
@@ -572,7 +595,7 @@ impl OpendriveCore {
         self.parse_response_unit(resp).await
     }
 
-    async fn check_if_file_exists(&self, path: &str) -> Result<()> {
+    async fn check_if_file_exists(&self, path: &str) -> Result<bool> {
         let path = build_abs_path(&self.root, path);
 
         let parent = get_parent(&path);
@@ -606,12 +629,9 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveCheckIfExistsResponse::Success(result) => {
                     if result.result.len() > 0 {
-                        Ok(())
+                        Ok(true)
                     } else {
-                        Err(Error::new(
-                            ErrorKind::NotFound,
-                            format!("{} no found", file_name),
-                        ))
+                        Ok(false)
                     }
                 }
                 OpendriveCheckIfExistsResponse::Fail(result) => {
@@ -626,7 +646,7 @@ impl OpendriveCore {
         }
     }
 
-    async fn create_file(&self, path: &str) -> Result<()> {
+    pub(crate) async fn create_file(&self, path: &str) -> Result<OpendriveCreateFileInfo> {
         let parent = get_parent(path);
         let file_name = get_basename(path);
 
@@ -644,11 +664,201 @@ impl OpendriveCore {
             "open_if_exists": 1
         });
 
-        let req = Request::post(&url).header(header::CONTENT_TYPE, "application/json").body(Buffer::from(body.to_string())).map_err(new_request_build_error)?;
+        let req = Request::post(&url)
+            .extension(Operation::Write)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        let parsed_res: Result<OpendriveCreateFileResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveCreateFileResponse::Success(result) => Ok(result),
+                OpendriveCreateFileResponse::Fail(result) => {
+                    if result.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                }
+            },
+            Err(err) => Err(new_json_deserialize_error(err)),
+        }
+    }
+
+    async fn open_file_upload(
+        &self,
+        file_id: &str,
+        file_size: u64,
+    ) -> Result<OpendriveOpenFileUploadInfo> {
+        let url = format!(
+            "{}/upload/open_file_upload.json",
+            constants::OPENDRIVE_BASE_URL
+        );
+        let url = self.sign(&url).await?;
+
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "file_id": file_id,
+            "file_size": file_size
+        });
+
+        let req = Request::post(&url)
+            .extension(Operation::Write)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        let parsed_res: Result<OpendriveOpenFileUploadResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveOpenFileUploadResponse::Success(result) => Ok(result),
+                OpendriveOpenFileUploadResponse::Fail(result) => {
+                    if result.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                }
+            },
+            Err(err) => Err(new_json_deserialize_error(err)),
+        }
+    }
+
+    async fn upload_file_chunk(
+        &self,
+        file_id: &str,
+        file_name: &str,
+        temp_location: &str,
+        offset: usize,
+        chunk: Buffer,
+    ) -> Result<()> {
+        let url = format!(
+            "{}/upload/upload_file_chunk.json",
+            constants::OPENDRIVE_BASE_URL
+        );
+        let url = self.sign(&url).await?;
+
+        let req = Request::post(&url).extension(Operation::Write);
+
+        let chunk_size = chunk.len();
+        let file_part = FormDataPart::new("file")
+            .header(
+                header::CONTENT_DISPOSITION,
+                format!("form-data; name=\"file\"; filename=\"{file_name}\"")
+                    .parse()
+                    .unwrap(),
+            )
+            .content(chunk);
+
+        let multipart = Multipart::new()
+            .part(FormDataPart::new("session_id").content(constants::OPENDRIVE_SESSION_ID))
+            .part(FormDataPart::new("file_id").content(file_id.to_string()))
+            .part(FormDataPart::new("temp_location").content(temp_location.to_string()))
+            .part(FormDataPart::new("chunk_offset").content(offset.to_string()))
+            .part(FormDataPart::new("chunk_size").content(chunk_size.to_string()))
+            .part(file_part);
+
+        let req = multipart.apply(req)?;
 
         let resp = self.info.http_client().send(req).await?;
 
         self.parse_response_unit(resp).await
+    }
+
+    async fn upload_file_chunk_second(
+        &self,
+        file_id: &str,
+        file_name: &str,
+        chunk: Buffer,
+    ) -> Result<()> {
+        let url = format!(
+            "{}/upload/upload_file_chunk2.json/{}/{}",
+            constants::OPENDRIVE_BASE_URL,
+            constants::OPENDRIVE_SESSION_ID,
+            file_id
+        );
+        let url = self.sign(&url).await?;
+
+        let req = Request::post(&url).extension(Operation::Write);
+
+        let file_part = FormDataPart::new("file")
+            .header(
+                header::CONTENT_DISPOSITION,
+                format!("form-data; name=\"file\"; filename=\"{file_name}\"")
+                    .parse()
+                    .unwrap(),
+            )
+            .content(chunk);
+
+        let multipart = Multipart::new().part(file_part);
+
+        let req = multipart.apply(req)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        self.parse_response_unit(resp).await
+    }
+
+    async fn close_file_upload(
+        &self,
+        file_id: &str,
+        file_size: u64,
+        temp_location: Option<String>,
+    ) -> Result<OpendriveCloseFileUploadInfo> {
+        let url = format!(
+            "{}/upload/close_file_upload.json",
+            constants::OPENDRIVE_BASE_URL
+        );
+        let url = self.sign(&url).await?;
+
+        let body = if temp_location.is_some() {
+            json!({
+                "session_id": constants::OPENDRIVE_SESSION_ID,
+                "file_id": file_id.to_string(),
+                "file_size": file_size.to_string(),
+                "temp_location": temp_location.unwrap()
+            })
+        } else {
+            json!({
+                "session_id": constants::OPENDRIVE_SESSION_ID,
+                "file_id": file_id.to_string(),
+                "file_size": file_size.to_string(),
+            })
+        };
+
+        let req = Request::post(&url)
+            .extension(Operation::Write)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        let parsed_res: Result<OpendriveCloseFileUploadResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveCloseFileUploadResponse::Success(result) => Ok(result),
+                OpendriveCloseFileUploadResponse::Fail(result) => {
+                    if result.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                }
+            },
+            Err(err) => Err(new_json_deserialize_error(err)),
+        }
     }
 }
 
@@ -690,7 +900,10 @@ impl OpendriveCore {
 
                 // Parse since time once for both time-based conditions
                 let last_modified = parse_datetime_from_from_timestamp(
-                    result.date_modified.parse().map_err(parse_i64_error)?,
+                    result
+                        .date_modified
+                        .parse()
+                        .map_err(parse_numeric_types_error)?,
                 )
                 .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
 
@@ -747,7 +960,10 @@ impl OpendriveCore {
 
                     // Parse since time once for both time-based conditions
                     let last_modified = parse_datetime_from_from_timestamp(
-                        result.date_modified.parse().map_err(parse_i64_error)?,
+                        result
+                            .date_modified
+                            .parse()
+                            .map_err(parse_numeric_types_error)?,
                     )
                     .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
 
@@ -818,16 +1034,12 @@ impl OpendriveCore {
             return Err(Error::new(ErrorKind::IsADirectory, "path should be a file"));
         }
 
-        let file_id = if metadata.etag().is_some() {
-            metadata.etag().unwrap()
-        } else {
-            &self.get_file_id(path).await?
-        };
+        let file_id = self.parse_id_by_metadata(path, metadata).await?;
 
         let url = format!(
             "{}/download/file.json/{}",
             constants::OPENDRIVE_BASE_URL,
-            file_id
+            &file_id
         );
         let url = self.sign(&url).await?;
         let mut url = QueryPairsWriter::new(&url);
@@ -885,23 +1097,15 @@ impl OpendriveCore {
         }
 
         if metadata.is_file() {
-            let file_id = if metadata.etag().is_some() {
-                metadata.etag().unwrap()
-            } else {
-                &self.get_file_id(&path).await?
-            };
+            let file_id = self.parse_id_by_metadata(&path, metadata).await?;
 
-            self.trash_file(file_id).await?;
-            self.remove_trash_file(file_id).await
+            self.trash_file(&file_id).await?;
+            self.remove_trash_file(&file_id).await
         } else {
-            let folder_id = if metadata.etag().is_some() {
-                metadata.etag().unwrap()
-            } else {
-                &self.get_folder_id(&path).await?
-            };
+            let folder_id = self.parse_id_by_metadata(&path, metadata).await?;
 
-            self.trash_folder(folder_id).await?;
-            self.remove_trash_folder(folder_id).await
+            self.trash_folder(&folder_id).await?;
+            self.remove_trash_folder(&folder_id).await
         }
     }
 
@@ -949,6 +1153,62 @@ impl OpendriveCore {
         }
 
         Ok(entry_list)
+    }
+
+    pub(crate) async fn write_once(
+        &self,
+        file_id: &str,
+        path: &str,
+        file_size: u64,
+        chunk: Buffer,
+    ) -> Result<OpendriveCloseFileUploadInfo> {
+        let if_exists = self.check_if_file_exists(path).await?;
+
+        if !if_exists {
+            self.create_file(path).await?;
+        }
+
+        self.open_file_upload(file_id, file_size).await?;
+
+        let file_name = get_basename(path);
+        self.upload_file_chunk_second(file_id, file_name, chunk)
+            .await?;
+
+        self.close_file_upload(file_id, file_size, None).await
+    }
+
+    pub(crate) async fn write_append(
+        &self,
+        path: &str,
+        file_size: u64,
+        offset: u64,
+        chunk: Buffer,
+    ) -> Result<OpendriveGetFileInfo> {
+        let file_id = self.get_file_id(path).await?;
+
+        let info = self.open_file_upload(&file_id, file_size).await?;
+
+        let file_name = get_basename(path);
+        self.upload_file_chunk(
+            &file_id,
+            file_name,
+            &info.temp_location,
+            offset as usize,
+            chunk,
+        )
+        .await?;
+
+        let info = self
+            .close_file_upload(&file_id, file_size, Some(info.temp_location))
+            .await?;
+
+        Ok(OpendriveGetFileInfo {
+            file_id,
+            name: file_name.to_string(),
+            size: info.size,
+            version: info.version,
+            date_modified: info.date_modified,
+        })
     }
 }
 

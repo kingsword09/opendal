@@ -170,3 +170,49 @@ pub enum OpendriveCheckIfExistsResponse {
     Success(OpendriveCheckIfExists),
     Fail(OpendriveDeserializeFailError),
 }
+
+#[derive(Debug, Deserialize)]
+pub struct OpendriveOpenFileUploadInfo {
+    #[serde(rename = "TempLocation")]
+    pub temp_location: String,
+
+    #[serde(rename = "RequireCompression")]
+    pub require_compression: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OpendriveOpenFileUploadResponse {
+    Success(OpendriveOpenFileUploadInfo),
+    Fail(OpendriveDeserializeFailError),
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OpendriveCloseFileUploadInfo {
+    #[serde(rename = "Size")]
+    pub size: String,
+    #[serde(rename = "Version")]
+    pub version: String,
+    #[serde(rename = "DateModified")]
+    pub date_modified: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OpendriveCloseFileUploadResponse {
+    Success(OpendriveCloseFileUploadInfo),
+    Fail(OpendriveDeserializeFailError),
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OpendriveCreateFileInfo {
+    #[serde(rename = "Size")]
+    pub size: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OpendriveCreateFileResponse {
+    Success(OpendriveCreateFileInfo),
+    Fail(OpendriveDeserializeFailError),
+}

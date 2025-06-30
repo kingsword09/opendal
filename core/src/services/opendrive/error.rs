@@ -15,51 +15,34 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use bytes::Buf;
 use http::Response;
-use http::StatusCode;
 
-use crate::raw::*;
-use crate::*;
+use crate::services::opendrive::model::OpendriveDeserializeFailError;
+use crate::{Buffer, Error, ErrorKind};
 
 /// Parse error response into Error.
 pub(super) fn parse_error(response: Response<Buffer>) -> Error {
-    let (parts, body) = response.into_parts();
-    let bs = body.to_bytes();
+    let result: Result<OpendriveDeserializeFailError, serde_json::Error> =
+        serde_json::from_reader(response.body().clone().reader());
 
-    let (kind, retryable) = match parts.status {
-        StatusCode::NOT_FOUND => (ErrorKind::NotFound, false),
-        // The OneDrive service replaces resources.
-        // However, the Onedrive doesn't have Strong Read-After-Write properties,
-        // the concurrent requests to create directories might result in errors.
-        //
-        // Running behavior tests can yield HTTP 409 Conflict because of the consistency guarantee.
-        //
-        // Read more about `REPLACE_EXISTING_ITEM_WHEN_CONFLICT` in `graph_model.rs`.
-        StatusCode::CONFLICT => (ErrorKind::AlreadyExists, true),
-        StatusCode::FORBIDDEN => (ErrorKind::PermissionDenied, false),
-        StatusCode::INTERNAL_SERVER_ERROR
-        | StatusCode::BAD_GATEWAY
-        | StatusCode::SERVICE_UNAVAILABLE
-        | StatusCode::GATEWAY_TIMEOUT => (ErrorKind::Unexpected, true),
-        StatusCode::NOT_MODIFIED | StatusCode::PRECONDITION_FAILED => {
-            (ErrorKind::ConditionNotMatch, false)
-        }
-        _ => (ErrorKind::Unexpected, false),
+    let (kind, message) = match result {
+        Ok(result) => match result.code {
+            400 => (ErrorKind::Unexpected, result.message),
+            401 => (ErrorKind::PermissionDenied, result.message),
+            404 => (ErrorKind::NotFound, result.message),
+            409 => (ErrorKind::AlreadyExists, result.message),
+            _ => (ErrorKind::Unexpected, result.message),
+        },
+        Err(_) => (
+            ErrorKind::Unexpected,
+            "unexpected error occurred during deserialization".to_string(),
+        ),
     };
 
-    let message = String::from_utf8_lossy(&bs);
-
-    let mut err = Error::new(kind, message);
-
-    err = with_error_response_context(err, parts);
-
-    if retryable {
-        err = err.set_temporary();
-    }
-
-    err
+    Error::new(kind, message)
 }
 
-pub(super) fn parse_i64_error(err: impl std::error::Error) -> Error {
-    Error::new(ErrorKind::Unexpected, format!("parse i64 error: {}", err))
+pub(super) fn parse_numeric_types_error(err: impl std::error::Error) -> Error {
+    Error::new(ErrorKind::Unexpected, format!("parse Numeric types error: {}", err))
 }
