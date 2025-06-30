@@ -15,24 +15,24 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#[cfg(feature = "services-opendrive")]
-mod backend;
-#[cfg(feature = "services-opendrive")]
-mod core;
-// #[cfg(feature = "services-opendrive")]
-// mod delete;
-#[cfg(feature = "services-opendrive")]
-mod error;
-// #[cfg(feature = "services-opendrive")]
-// mod graph_model;
-// #[cfg(feature = "services-opendrive")]
-// mod lister;
-// #[cfg(feature = "services-opendrive")]
-// mod writer;
-#[cfg(feature = "services-opendrive")]
-mod delete;
-#[cfg(feature = "services-opendrive")]
-mod model;
+use std::sync::Arc;
 
-mod config;
-pub use config::OpendriveConfig;
+use super::core::*;
+use crate::raw::*;
+use crate::*;
+
+pub struct OpendriveDeleter {
+    core: Arc<OpendriveCore>,
+}
+
+impl OpendriveDeleter {
+    pub fn new(core: Arc<OpendriveCore>) -> Self {
+        Self { core }
+    }
+}
+
+impl oio::OneShotDelete for OpendriveDeleter {
+    async fn delete_once(&self, path: String, args: OpDelete) -> Result<()> {
+        self.core.delete(&path, args.version()).await
+    }
+}

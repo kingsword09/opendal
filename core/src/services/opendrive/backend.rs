@@ -27,6 +27,7 @@ use tokio::sync::Mutex;
 
 use crate::raw::*;
 use crate::services::opendrive::core::OpendriveSigner;
+use crate::services::opendrive::delete::OpendriveDeleter;
 use crate::services::OpendriveConfig;
 use crate::Scheme;
 use crate::*;
@@ -216,7 +217,7 @@ impl Access for OpendriveAccessor {
     // type Deleter = oio::OneShotDeleter<OneDriveDeleter>;
     type Writer = ();
     type Lister = ();
-    type Deleter = ();
+    type Deleter = oio::OneShotDeleter<OpendriveDeleter>;
 
     fn info(&self) -> Arc<AccessorInfo> {
         self.core.info.clone()
@@ -248,5 +249,12 @@ impl Access for OpendriveAccessor {
         self.core.copy(from, to).await?;
 
         Ok(RpCopy::default())
+    }
+
+    async fn delete(&self) -> Result<(RpDelete, Self::Deleter)> {
+        Ok((
+            RpDelete::default(),
+            oio::OneShotDeleter::new(OpendriveDeleter::new(self.core.clone())),
+        ))
     }
 }

@@ -24,6 +24,7 @@ use chrono::DateTime;
 use chrono::Utc;
 use http::header;
 use http::Request;
+use http::Response;
 use http::StatusCode;
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -342,6 +343,25 @@ impl OpendriveCore {
         Ok((files, folders))
     }
 
+    async fn parse_response_unit(&self, resp: Response<Buffer>) -> Result<()> {
+        let parsed_res: Result<OpendriveSuccessIgnoreResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveSuccessIgnoreResponse::Success => Ok(()),
+                OpendriveSuccessIgnoreResponse::Fail(result) => {
+                    if result.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.message));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, result.message))
+                }
+            },
+            Err(err) => Err(new_json_deserialize_error(err)),
+        }
+    }
+
     async fn rename_folder(&self, from: &str, to: &str) -> Result<()> {
         let from = build_abs_path(&self.root, from);
         let to = build_abs_path(&self.root, to);
@@ -373,22 +393,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        let parsed_res: Result<OpendriveFolderResponse, serde_json::Error> =
-            serde_json::from_reader(resp.body().clone().reader());
-
-        match parsed_res {
-            Ok(parsed_res) => match parsed_res {
-                OpendriveFolderResponse::Success(_) => Ok(()),
-                OpendriveFolderResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
-                    }
-
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
-                }
-            },
-            Err(err) => Err(new_json_deserialize_error(err)),
-        }
+        self.parse_response_unit(resp).await
     }
 
     async fn rename_file(&self, from: &str, to: &str) -> Result<()> {
@@ -415,22 +420,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        let parsed_res: Result<OpendriveFileResponse, serde_json::Error> =
-            serde_json::from_reader(resp.body().clone().reader());
-
-        match parsed_res {
-            Ok(parsed_res) => match parsed_res {
-                OpendriveFileResponse::Success(_) => Ok(()),
-                OpendriveFileResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
-                    }
-
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
-                }
-            },
-            Err(err) => Err(new_json_deserialize_error(err)),
-        }
+        self.parse_response_unit(resp).await
     }
 
     async fn copy_folder(&self, from: &str, to: &str) -> Result<()> {
@@ -463,22 +453,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        let parsed_res: Result<OpendriveFolderResponse, serde_json::Error> =
-            serde_json::from_reader(resp.body().clone().reader());
-
-        match parsed_res {
-            Ok(parsed_res) => match parsed_res {
-                OpendriveFolderResponse::Success(_) => Ok(()),
-                OpendriveFolderResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
-                    }
-
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
-                }
-            },
-            Err(err) => Err(new_json_deserialize_error(err)),
-        }
+        self.parse_response_unit(resp).await
     }
 
     async fn copy_file(&self, from: &str, to: &str) -> Result<()> {
@@ -510,22 +485,87 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        let parsed_res: Result<OpendriveFileResponse, serde_json::Error> =
-            serde_json::from_reader(resp.body().clone().reader());
+        self.parse_response_unit(resp).await
+    }
 
-        match parsed_res {
-            Ok(parsed_res) => match parsed_res {
-                OpendriveFileResponse::Success(_) => Ok(()),
-                OpendriveFileResponse::Fail(result) => {
-                    if result.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.message));
-                    }
+    async fn trash_folder(&self, folder_id: &str) -> Result<()> {
+        let url = format!("{}/folder/trash.json", constants::OPENDRIVE_BASE_URL);
+        let url = self.sign(&url).await?;
 
-                    Err(Error::new(ErrorKind::Unexpected, result.message))
-                }
-            },
-            Err(err) => Err(new_json_deserialize_error(err)),
-        }
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "folder_id": folder_id
+        });
+
+        let req = Request::post(&url)
+            .extension(Operation::Delete)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        self.parse_response_unit(resp).await
+    }
+
+    async fn trash_file(&self, file_id: &str) -> Result<()> {
+        let url = format!("{}/file/trash.json", constants::OPENDRIVE_BASE_URL);
+        let url = self.sign(&url).await?;
+
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "file_id": file_id
+        });
+
+        let req = Request::post(&url)
+            .extension(Operation::Delete)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        self.parse_response_unit(resp).await
+    }
+
+    async fn remove_trash_folder(&self, folder_id: &str) -> Result<()> {
+        let url = format!("{}/folder/remove.json", constants::OPENDRIVE_BASE_URL);
+        let url = self.sign(&url).await?;
+
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "folder_id": folder_id
+        });
+
+        let req = Request::post(&url)
+            .extension(Operation::Delete)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        self.parse_response_unit(resp).await
+    }
+
+    async fn remove_trash_file(&self, file_id: &str) -> Result<()> {
+        let url = format!("{}/file/remove.json", constants::OPENDRIVE_BASE_URL);
+        let url = self.sign(&url).await?;
+
+        let body = json!({
+            "session_id": constants::OPENDRIVE_SESSION_ID,
+            "file_id": file_id
+        });
+
+        let req = Request::post(&url)
+            .extension(Operation::Delete)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Buffer::from(body.to_string()))
+            .map_err(new_request_build_error)?;
+
+        let resp = self.info.http_client().send(req).await?;
+
+        self.parse_response_unit(resp).await
     }
 }
 
@@ -750,6 +790,33 @@ impl OpendriveCore {
             self.copy_file(from, to).await
         } else {
             self.copy_folder(from, to).await
+        }
+    }
+
+    pub(crate) async fn delete(&self, path: &str, version: Option<&str>) -> Result<()> {
+        let path = build_abs_path(&self.root, path);
+        let metadata = self.stat(&path, None).await?;
+
+        if version.is_some() && metadata.version() != version {
+            return Err(Error::new(ErrorKind::ConditionNotMatch, "version mismatch"))
+        }
+
+        if metadata.is_file() {
+            let file_id = if metadata.etag().is_some() {
+                metadata.etag().unwrap()
+            } else {
+                &self.get_file_id(&path).await?
+            };
+
+            self.remove_trash_file(file_id).await
+        } else {
+            let file_id = if metadata.etag().is_some() {
+                metadata.etag().unwrap()
+            } else {
+                &self.get_folder_id(&path).await?
+            };
+
+            self.remove_trash_folder(file_id).await
         }
     }
 
