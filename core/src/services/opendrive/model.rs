@@ -35,6 +35,13 @@ pub struct OAuthTokenResponseBody {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
+pub enum OAuthTokenResponse {
+    Success(OAuthTokenResponseBody),
+    Fail(OpendriveDeserializeFail),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
 pub enum OpendriveCreateDirResponse {
     Success(OpendriveCreateDirSuccess),
     Fail(OpendriveDeserializeFail),
@@ -204,12 +211,14 @@ pub enum OpendriveCloseFileUploadResponse {
     Fail(OpendriveDeserializeFail),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct OpendriveCreateFileInfo {
     #[serde(rename = "FileId")]
     pub file_id: String,
     #[serde(rename = "Size")]
     pub size: String,
+    #[serde(rename = "TempLocation")]
+    pub temp_location: String,
 }
 
 #[derive(Debug, Deserialize)]

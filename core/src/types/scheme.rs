@@ -157,12 +157,12 @@ pub enum Scheme {
     HdfsNative,
     /// [surrealdb](crate::services::Surrealdb): Surrealdb Services
     Surrealdb,
+    /// [Opendrive](crate::services::Opendrive): Opendrive Services
+    Opendrive,
     /// [lakefs](crate::services::Lakefs): LakeFS Services
     Lakefs,
     /// [NebulaGraph](crate::services::NebulaGraph): NebulaGraph Services
     NebulaGraph,
-    /// [Opendrive](crate::services::Opendrive): Opendrive Services
-    Opendrive,
     /// Custom that allow users to implement services outside OpenDAL.
     ///
     /// # NOTE

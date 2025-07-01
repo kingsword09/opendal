@@ -21,7 +21,7 @@ use std::fmt::Formatter;
 use serde::Deserialize;
 use serde::Serialize;
 
-/// Config for [OneDrive](https://onedrive.com) backend support.
+/// Config for [Opendrive](https://opendrive.com) backend support.
 #[derive(Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(default)]
 #[non_exhaustive]
@@ -40,7 +40,7 @@ pub struct OpendriveConfig {
 
 impl Debug for OpendriveConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OnedriveConfig")
+        f.debug_struct("OpendriveConfig")
             .field("root", &self.root)
             .finish_non_exhaustive()
     }

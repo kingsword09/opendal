@@ -29,6 +29,8 @@ mod writer;
 mod delete;
 #[cfg(feature = "services-opendrive")]
 mod model;
+#[cfg(feature = "services-opendrive")]
+pub use backend::OpendriveBuilder as Opendrive;
 
 mod config;
 pub use config::OpendriveConfig;

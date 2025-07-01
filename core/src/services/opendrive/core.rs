@@ -25,11 +25,9 @@ use chrono::Utc;
 use http::header;
 use http::Request;
 use http::Response;
-use http::StatusCode;
 use serde_json::json;
 use tokio::sync::Mutex;
 
-use super::error::parse_error;
 use crate::raw::*;
 use crate::services::opendrive::error::parse_numeric_types_error;
 use crate::services::opendrive::model::*;
@@ -135,7 +133,7 @@ impl OpendriveCore {
         });
 
         let req = Request::post(url)
-            .header(header::CONTENT_TYPE, "applicaton/json")
+            .header(header::CONTENT_TYPE, "application/json")
             .body(Buffer::from(body.to_string()))
             .map_err(new_request_build_error)?;
 
@@ -1154,7 +1152,11 @@ impl OpendriveCore {
         Ok(entry_list)
     }
 
-    pub(crate) async fn write_prepare(&self, path: &str, op: &OpWrite) -> Result<String> {
+    pub(crate) async fn write_prepare(
+        &self,
+        path: &str,
+        op: &OpWrite,
+    ) -> Result<OpendriveCreateFileInfo> {
         let if_exists = self.check_if_file_exists(path).await?;
 
         if if_exists {
@@ -1163,6 +1165,7 @@ impl OpendriveCore {
             }
         } else {
             let result = self.get_folder_id(path).await;
+
             if result.is_ok() {
                 return Err(Error::new(
                     ErrorKind::IsADirectory,
@@ -1172,8 +1175,10 @@ impl OpendriveCore {
         }
 
         let result = self.create_file(path).await?;
+        self.close_file_upload(&result.file_id, 0, Some(result.clone().temp_location))
+            .await?;
 
-        Ok(result.file_id)
+        Ok(result)
     }
 
     pub(crate) async fn write_once(
@@ -1182,20 +1187,22 @@ impl OpendriveCore {
         chunk: Buffer,
         op: &OpWrite,
     ) -> Result<OpendriveGetFileInfo> {
-        let file_id = self.write_prepare(path, op).await?;
+        let info = self.write_prepare(path, op).await?;
 
         let file_size = chunk.len() as u64;
 
-        self.open_file_upload(&file_id, file_size).await?;
+        self.open_file_upload(&info.file_id, file_size).await?;
 
         let file_name = get_basename(path);
-        self.upload_file_chunk_second(&file_id, file_name, chunk)
+        self.upload_file_chunk_second(&info.file_id, file_name, chunk)
             .await?;
 
-        let result = self.close_file_upload(&file_id, file_size, None).await?;
+        let result = self
+            .close_file_upload(&info.file_id, file_size, Some(info.temp_location))
+            .await?;
 
         Ok(OpendriveGetFileInfo {
-            file_id,
+            file_id: info.file_id,
             name: file_name.to_string(),
             size: result.size,
             version: result.version,
@@ -1211,7 +1218,8 @@ impl OpendriveCore {
         chunk: Buffer,
         op: &OpWrite,
     ) -> Result<OpendriveGetFileInfo> {
-        let file_id = self.write_prepare(path, op).await?;
+        let info = self.write_prepare(path, op).await?;
+        let file_id = info.file_id;
 
         let info = self.open_file_upload(&file_id, file_size).await?;
 
@@ -1266,26 +1274,42 @@ impl OpendriveSigner {
     async fn refresh_tokens(&mut self, oauth_body: serde_json::Value) -> Result<()> {
         let url = format!("{}/oauth2/grant.json", constants::OPENDRIVE_BASE_URL);
 
-        let request = Request::post(url)
+        // Build request with proper content type and body
+        let request = Request::post(&url)
             .header(header::CONTENT_TYPE, "application/json")
             .body(Buffer::from(oauth_body.to_string()))
             .map_err(new_request_build_error)?;
 
+        // Send request and get response
         let response = self.info.http_client().send(request).await?;
-        match response.status() {
-            StatusCode::OK => {
-                let resp_body = response.into_body();
-                let data: OAuthTokenResponseBody = serde_json::from_reader(resp_body.reader())
-                    .map_err(new_json_deserialize_error)?;
-                self.access_token = data.access_token;
-                self.refresh_token = data.refresh_token;
-                self.expires_in = Utc::now()
-                    + chrono::TimeDelta::try_seconds(data.expires_in)
-                        .expect("expires_in must be valid seconds")
-                    - chrono::TimeDelta::minutes(2); // assumes 2 mins graceful transmission for implementation simplicity
-                Ok(())
-            }
-            _ => Err(parse_error(response)),
+
+        let resp_body = response.into_body();
+
+        let data: Result<OAuthTokenResponse, serde_json::Error> =
+            serde_json::from_reader(resp_body.reader());
+
+        match data {
+            Ok(data) => match data {
+                OAuthTokenResponse::Success(data) => {
+                    self.access_token = data.access_token;
+                    self.refresh_token = data.refresh_token;
+                    self.expires_in = Utc::now()
+                        + chrono::TimeDelta::try_seconds(data.expires_in)
+                            .expect("expires_in must be valid seconds")
+                        - chrono::TimeDelta::minutes(2); // assumes 2 mins graceful transmission for implementation simplicity
+
+                    Ok(())
+                }
+                OAuthTokenResponse::Fail(err) => {
+                    println!("QAQ err {:?}", err.error.message);
+                    if err.error.code == 401 {
+                        return Err(Error::new(ErrorKind::ConfigInvalid, "invalid credentials"));
+                    }
+
+                    Err(Error::new(ErrorKind::Unexpected, err.error.message))
+                }
+            },
+            Err(err) => Err(Error::new(ErrorKind::Unexpected, err.to_string())),
         }
     }
 

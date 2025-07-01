@@ -42,7 +42,7 @@ impl Configurator for OpendriveConfig {
     }
 }
 
-/// Microsoft [OneDrive](https://onedrive.com) backend support.
+/// [Opendrive](https://www.opendrive.com/) backend support.
 #[doc = include_str!("docs.md")]
 #[derive(Default)]
 pub struct OpendriveBuilder {
@@ -142,6 +142,8 @@ impl Builder for OpendriveBuilder {
     type Config = OpendriveConfig;
 
     fn build(self) -> Result<impl Access> {
+        // let root = self.config.root.unwrap_or_default();
+        // let root = "/".to_string();
         let root = normalize_root(&self.config.root.unwrap_or_default());
         debug!("backend use root {root}");
 
@@ -164,7 +166,7 @@ impl Builder for OpendriveBuilder {
         };
 
         let info = AccessorInfo::default();
-        info.set_scheme(Scheme::Onedrive)
+        info.set_scheme(Scheme::Opendrive)
             .set_root(&root)
             .set_native_capability(Capability {
                 create_dir: true,
@@ -238,7 +240,7 @@ impl Debug for OpendriveAccessor {
 
 impl Access for OpendriveAccessor {
     type Reader = Buffer;
-    // type Lister = oio::PageLister<OneDriveLister>;
+    // type Lister = oio::PageLister<OpendriveLister>;
     type Writer = OpendriveWriters;
     type Lister = ();
     type Deleter = oio::OneShotDeleter<OpendriveDeleter>;

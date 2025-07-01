@@ -282,6 +282,8 @@ impl Operator {
             Scheme::HdfsNative => Self::from_iter::<services::HdfsNative>(iter)?.finish(),
             #[cfg(feature = "services-lakefs")]
             Scheme::Lakefs => Self::from_iter::<services::Lakefs>(iter)?.finish(),
+            #[cfg(feature = "services-opendrive")]
+            Scheme::Opendrive => Self::from_iter::<services::Opendrive>(iter)?.finish(),
             v => {
                 return Err(Error::new(
                     ErrorKind::Unsupported,
