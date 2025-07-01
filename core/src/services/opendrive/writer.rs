@@ -46,17 +46,7 @@ impl oio::OneShotWrite for OpendriveWriter {
     async fn write_once(&self, bs: Buffer) -> Result<Metadata> {
         let path = build_abs_path(&self.core.root, &self.path);
 
-        let metadata = self.core.stat(&path, None).await?;
-        if metadata.is_dir() {
-            return Err(Error::new(
-                ErrorKind::IsADirectory,
-                "directory does not support write operations",
-            ));
-        }
-
-        let file_id = self.core.parse_id_by_metadata(&path, metadata).await?;
-
-        let result = self.core.write_once(&file_id, &path, bs).await?;
+        let result = self.core.write_once(&path, bs, &self.op).await?;
 
         let last_modified = parse_datetime_from_from_timestamp(
             result
@@ -67,7 +57,7 @@ impl oio::OneShotWrite for OpendriveWriter {
         .map_err(|_| Error::new(ErrorKind::Unsupported, "invalid since format"))?;
 
         let metadata = Metadata::new(EntryMode::FILE)
-            .with_etag(file_id)
+            .with_etag(result.file_id)
             .with_last_modified(last_modified)
             .with_version(result.version)
             .with_content_length(result.size.parse().map_err(parse_numeric_types_error)?);
@@ -89,7 +79,7 @@ impl oio::AppendWrite for OpendriveWriter {
 
     async fn append(&self, offset: u64, size: u64, body: Buffer) -> Result<Metadata> {
         let path = build_abs_path(&self.core.root, &self.path);
-        let result = self.core.write_append(&path, size, offset, body).await?;
+        let result = self.core.write_append(&path, size, offset, body, &self.op).await?;
 
         let last_modified = parse_datetime_from_from_timestamp(
             result

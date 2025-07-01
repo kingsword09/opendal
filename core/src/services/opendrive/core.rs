@@ -679,8 +679,8 @@ impl OpendriveCore {
             Ok(parsed_res) => match parsed_res {
                 OpendriveCreateFileResponse::Success(result) => Ok(result),
                 OpendriveCreateFileResponse::Fail(result) => {
-                    if result.error.code == 404 {
-                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
+                    if result.error.code == 409 {
+                        return Err(Error::new(ErrorKind::AlreadyExists, result.error.message));
                     }
 
                     Err(Error::new(ErrorKind::Unexpected, result.error.message))
@@ -1155,27 +1155,53 @@ impl OpendriveCore {
         Ok(entry_list)
     }
 
+    pub(crate) async fn prepare_write(&self, path: &str, op: &OpWrite) -> Result<String> {
+        let result = self.get_folder_id(path).await;
+        if result.is_ok() {
+            return Err(Error::new(
+                ErrorKind::IsADirectory,
+                "directory does not support write operations",
+            ));
+        }
+
+        let result = self.create_file(path).await;
+
+        match result {
+            Ok(info) => Ok(info.file_id),
+            Err(err) => match err.kind() {
+                ErrorKind::AlreadyExists if op.if_not_exists() => {
+                    return Err(Error::new(ErrorKind::AlreadyExists, "file already exists"));
+                }
+                _ => return Err(err),
+            },
+        }
+    }
+
     pub(crate) async fn write_once(
         &self,
-        file_id: &str,
         path: &str,
         chunk: Buffer,
-    ) -> Result<OpendriveCloseFileUploadInfo> {
-        let if_exists = self.check_if_file_exists(path).await?;
-
-        if !if_exists {
-            self.create_file(path).await?;
-        }
+        op: &OpWrite,
+    ) -> Result<OpendriveGetFileInfo> {
+        let file_id = self.prepare_write(path, op).await?;
 
         let file_size = chunk.len() as u64;
 
-        self.open_file_upload(file_id, file_size).await?;
+        self.open_file_upload(&file_id, file_size).await?;
 
         let file_name = get_basename(path);
-        self.upload_file_chunk_second(file_id, file_name, chunk)
+        self.upload_file_chunk_second(&file_id, file_name, chunk)
             .await?;
 
-        self.close_file_upload(file_id, file_size, None).await
+        let result = self.close_file_upload(&file_id, file_size, None).await?;
+
+        Ok(OpendriveGetFileInfo {
+            file_id,
+            name: file_name.to_string(),
+            size: result.size,
+            version: result.version,
+            date_modified: result.date_modified,
+        })
     }
 
     pub(crate) async fn write_append(
@@ -1184,8 +1210,9 @@ impl OpendriveCore {
         file_size: u64,
         offset: u64,
         chunk: Buffer,
+        op: &OpWrite,
     ) -> Result<OpendriveGetFileInfo> {
-        let file_id = self.get_file_id(path).await?;
+        let file_id = self.prepare_write(path, op).await?;
 
         let info = self.open_file_upload(&file_id, file_size).await?;
 

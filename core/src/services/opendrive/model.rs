@@ -206,6 +206,8 @@ pub enum OpendriveCloseFileUploadResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct OpendriveCreateFileInfo {
+    #[serde(rename = "FileId")]
+    pub file_id: String,
     #[serde(rename = "Size")]
     pub size: String,
 }
