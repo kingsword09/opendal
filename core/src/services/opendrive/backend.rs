@@ -238,9 +238,7 @@ impl Debug for OpendriveAccessor {
 
 impl Access for OpendriveAccessor {
     type Reader = Buffer;
-    // type Writer = oio::OneShotWriter<OneDriveWriter>;
     // type Lister = oio::PageLister<OneDriveLister>;
-    // type Deleter = oio::OneShotDeleter<OneDriveDeleter>;
     type Writer = OpendriveWriters;
     type Lister = ();
     type Deleter = oio::OneShotDeleter<OpendriveDeleter>;

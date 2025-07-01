@@ -109,13 +109,14 @@ impl OpendriveCore {
         path: &str,
         metadata: Metadata,
     ) -> Result<String> {
-        if metadata.etag().is_some() {
-            Ok(metadata.etag().unwrap().to_string())
-        } else {
-            if metadata.is_file() {
-                Ok(self.get_file_id(path).await?)
-            } else {
-                Ok(self.get_folder_id(path).await?)
+        match metadata.etag() {
+            Some(etag) => Ok(etag.to_string()),
+            None => {
+                if metadata.is_file() {
+                    Ok(self.get_file_id(path).await?)
+                } else {
+                    Ok(self.get_folder_id(path).await?)
+                }
             }
         }
     }
@@ -270,17 +271,16 @@ impl OpendriveCore {
         let url = format!("{}/folder.json", constants::OPENDRIVE_BASE_URL);
         let url = self.sign(&url).await?;
 
-        let body = if folder_id.is_some() {
-            json!({
+        let body = match folder_id {
+            Some(folder_id) => json!({
                 "folder_name": name,
-                "folder_sub_parent": folder_id.unwrap(),
+                "folder_sub_parent": folder_id,
                 "session_id": constants::OPENDRIVE_SESSION_ID,
-            })
-        } else {
-            json!({
+            }),
+            None => json!({
                 "folder_name": name,
                 "session_id": constants::OPENDRIVE_SESSION_ID,
-            })
+            }),
         };
 
         let req = Request::post(url)
@@ -820,19 +820,18 @@ impl OpendriveCore {
         );
         let url = self.sign(&url).await?;
 
-        let body = if temp_location.is_some() {
-            json!({
+        let body = match temp_location {
+            Some(temp_location) => json!({
                 "session_id": constants::OPENDRIVE_SESSION_ID,
                 "file_id": file_id.to_string(),
                 "file_size": file_size.to_string(),
-                "temp_location": temp_location.unwrap()
-            })
-        } else {
-            json!({
+                "temp_location": temp_location
+            }),
+            None => json!({
                 "session_id": constants::OPENDRIVE_SESSION_ID,
                 "file_id": file_id.to_string(),
                 "file_size": file_size.to_string(),
-            })
+            }),
         };
 
         let req = Request::post(&url)
@@ -1155,26 +1154,26 @@ impl OpendriveCore {
         Ok(entry_list)
     }
 
-    pub(crate) async fn prepare_write(&self, path: &str, op: &OpWrite) -> Result<String> {
-        let result = self.get_folder_id(path).await;
-        if result.is_ok() {
-            return Err(Error::new(
-                ErrorKind::IsADirectory,
-                "directory does not support write operations",
-            ));
+    pub(crate) async fn write_prepare(&self, path: &str, op: &OpWrite) -> Result<String> {
+        let if_exists = self.check_if_file_exists(path).await?;
+
+        if if_exists {
+            if op.if_not_exists() {
+                return Err(Error::new(ErrorKind::AlreadyExists, "file already exists"));
+            }
+        } else {
+            let result = self.get_folder_id(path).await;
+            if result.is_ok() {
+                return Err(Error::new(
+                    ErrorKind::IsADirectory,
+                    "directory does not support write operations",
+                ));
+            }
         }
 
-        let result = self.create_file(path).await;
+        let result = self.create_file(path).await?;
 
-        match result {
-            Ok(info) => Ok(info.file_id),
-            Err(err) => match err.kind() {
-                ErrorKind::AlreadyExists if op.if_not_exists() => {
-                    return Err(Error::new(ErrorKind::AlreadyExists, "file already exists"));
-                }
-                _ => return Err(err),
-            },
-        }
+        Ok(result.file_id)
     }
 
     pub(crate) async fn write_once(
@@ -1183,7 +1182,7 @@ impl OpendriveCore {
         chunk: Buffer,
         op: &OpWrite,
     ) -> Result<OpendriveGetFileInfo> {
-        let file_id = self.prepare_write(path, op).await?;
+        let file_id = self.write_prepare(path, op).await?;
 
         let file_size = chunk.len() as u64;
 
@@ -1212,7 +1211,7 @@ impl OpendriveCore {
         chunk: Buffer,
         op: &OpWrite,
     ) -> Result<OpendriveGetFileInfo> {
-        let file_id = self.prepare_write(path, op).await?;
+        let file_id = self.write_prepare(path, op).await?;
 
         let info = self.open_file_upload(&file_id, file_size).await?;
 
