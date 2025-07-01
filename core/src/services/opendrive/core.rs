@@ -70,7 +70,7 @@ impl OpendriveCore {
         signer.sign(url).await
     }
 
-    async fn parse_file_metadata(&self, file: OpendriveGetFileInfo) -> Result<Metadata> {
+    fn parse_file_metadata(&self, file: OpendriveGetFileInfo) -> Result<Metadata> {
         // Parse since time once for both time-based conditions
         let last_modified = parse_datetime_from_from_timestamp(
             file.date_modified
@@ -354,7 +354,7 @@ impl OpendriveCore {
         let res = self.get_list_info(&folder.folder_id).await?;
 
         for info in res.files {
-            let metadata = self.parse_file_metadata(info.clone()).await?;
+            let metadata = self.parse_file_metadata(info.clone())?;
             let path = build_abs_path(parent, &info.name);
             files.push(Entry::new(path, metadata));
         }
@@ -368,7 +368,7 @@ impl OpendriveCore {
         Ok((files, folders))
     }
 
-    async fn parse_response_unit(&self, resp: Response<Buffer>) -> Result<()> {
+    fn parse_response_unit(&self, resp: Response<Buffer>) -> Result<()> {
         let parsed_res: Result<OpendriveSuccessIgnoreResponse, serde_json::Error> =
             serde_json::from_reader(resp.body().clone().reader());
 
@@ -420,7 +420,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp).await
+        self.parse_response_unit(resp)
     }
 
     async fn rename_file(&self, from: &str, to: &str) -> Result<()> {
@@ -447,7 +447,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp).await
+        self.parse_response_unit(resp)
     }
 
     async fn copy_folder(&self, from: &str, to: &str) -> Result<()> {
@@ -480,7 +480,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp).await
+        self.parse_response_unit(resp)
     }
 
     async fn copy_file(&self, from: &str, to: &str) -> Result<()> {
@@ -512,7 +512,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp).await
+        self.parse_response_unit(resp)
     }
 
     async fn trash_folder(&self, folder_id: &str) -> Result<()> {
@@ -532,7 +532,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp).await
+        self.parse_response_unit(resp)
     }
 
     async fn trash_file(&self, file_id: &str) -> Result<()> {
@@ -552,7 +552,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp).await
+        self.parse_response_unit(resp)
     }
 
     async fn remove_trash_folder(&self, folder_id: &str) -> Result<()> {
@@ -572,7 +572,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp).await
+        self.parse_response_unit(resp)
     }
 
     async fn remove_trash_file(&self, file_id: &str) -> Result<()> {
@@ -592,7 +592,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp).await
+        self.parse_response_unit(resp)
     }
 
     async fn check_if_file_exists(&self, path: &str) -> Result<bool> {
@@ -628,7 +628,7 @@ impl OpendriveCore {
         match parsed_res {
             Ok(parsed_res) => match parsed_res {
                 OpendriveCheckIfExistsResponse::Success(result) => {
-                    if result.result.len() > 0 {
+                    if !result.result.is_empty() {
                         Ok(true)
                     } else {
                         Ok(false)
@@ -771,7 +771,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp).await
+        self.parse_response_unit(resp)
     }
 
     async fn upload_file_chunk_second(
@@ -805,7 +805,7 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp).await
+        self.parse_response_unit(resp)
     }
 
     async fn close_file_upload(
@@ -1018,7 +1018,7 @@ impl OpendriveCore {
                         }
                     }
 
-                    Ok(self.parse_file_metadata(result).await?)
+                    Ok(self.parse_file_metadata(result)?)
                 } else {
                     Err(err)
                 }
@@ -1139,7 +1139,7 @@ impl OpendriveCore {
                 {
                     if folder_info.child_folders.unwrap_or_default() > 0 {
                         let (child_files, child_folders) = self
-                            .recursive_list(folder_info, &folder_entry.path())
+                            .recursive_list(folder_info, folder_entry.path())
                             .await?;
                         entry_list.extend(child_files);
                         entry_list.extend(child_folders.clone());
