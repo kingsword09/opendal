@@ -44,5 +44,15 @@ pub(super) fn parse_error(response: Response<Buffer>) -> Error {
 }
 
 pub(super) fn parse_numeric_types_error(err: impl std::error::Error) -> Error {
-    Error::new(ErrorKind::Unexpected, format!("parse Numeric types error: {}", err))
+    Error::new(
+        ErrorKind::Unexpected,
+        format!("parse Numeric types error: {}", err),
+    )
+}
+
+pub(super) fn new_proxy_request_build_error(err: reqwest::Error) -> Error {
+    Error::new(
+        ErrorKind::Unexpected,
+        format!("new proxy request build error: {}", err),
+    )
 }

@@ -21,11 +21,15 @@ use std::sync::Arc;
 
 use super::core::OpendriveCore;
 use log::debug;
+use reqwest::Client;
+use reqwest::Proxy;
 use tokio::sync::Mutex;
 
 use crate::raw::*;
+use crate::services::opendrive::core::constants;
 use crate::services::opendrive::core::OpendriveSigner;
 use crate::services::opendrive::delete::OpendriveDeleter;
+use crate::services::opendrive::error::new_proxy_request_build_error;
 use crate::services::opendrive::writer::OpendriveWriter;
 use crate::services::opendrive::writer::OpendriveWriters;
 use crate::services::OpendriveConfig;
@@ -213,7 +217,16 @@ impl Builder for OpendriveBuilder {
         }
 
         let accessor_info = Arc::new(info);
-        let signer = OpendriveSigner::new(accessor_info.clone(), &username, &password);
+        // We must use a proxy client to successfully obtain authorization information
+        // from OpenDrive's API.
+        let auth_http_client = Client::builder()
+            .proxy(
+                Proxy::http(constants::OPENDRIVE_BASE_URL)
+                    .map_err(new_proxy_request_build_error)?,
+            )
+            .build()
+            .map_err(new_proxy_request_build_error)?;
+        let signer = OpendriveSigner::new(auth_http_client, &username, &password);
 
         let core = Arc::new(OpendriveCore {
             info: accessor_info,

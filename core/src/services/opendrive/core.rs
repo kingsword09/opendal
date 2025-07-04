@@ -25,10 +25,12 @@ use chrono::Utc;
 use http::header;
 use http::Request;
 use http::Response;
+use reqwest::Client;
 use serde_json::json;
 use tokio::sync::Mutex;
 
 use crate::raw::*;
+use crate::services::opendrive::error::new_proxy_request_build_error;
 use crate::services::opendrive::error::parse_numeric_types_error;
 use crate::services::opendrive::model::*;
 use crate::*;
@@ -1249,20 +1251,19 @@ impl OpendriveCore {
 
 // OpenDrive is supporting simplified OAuth 2.0 standard for authorization (Resource Owner Password Credentials Flow).
 pub struct OpendriveSigner {
-    pub info: Arc<AccessorInfo>, // to use `http_client`
-
     pub username: String,
     pub password: String,
     pub refresh_token: String,
     pub access_token: String,
     pub expires_in: DateTime<Utc>,
+
+    pub auth_http_client: Client,
 }
 
 impl OpendriveSigner {
-    pub fn new(info: Arc<AccessorInfo>, username: &str, password: &str) -> Self {
+    pub fn new(auth_http_client: Client, username: &str, password: &str) -> Self {
         OpendriveSigner {
-            info,
-
+            auth_http_client,
             username: username.to_string(),
             password: password.to_string(),
             refresh_token: "".to_string(),
@@ -1274,19 +1275,21 @@ impl OpendriveSigner {
     async fn refresh_tokens(&mut self, oauth_body: serde_json::Value) -> Result<()> {
         let url = format!("{}/oauth2/grant.json", constants::OPENDRIVE_BASE_URL);
 
-        // Build request with proper content type and body
-        let request = Request::post(&url)
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Buffer::from(oauth_body.to_string()))
-            .map_err(new_request_build_error)?;
+        let request = self
+            .auth_http_client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .body(oauth_body.to_string())
+            .build()
+            .map_err(new_proxy_request_build_error)?;
+        let resp = self
+            .auth_http_client
+            .execute(request)
+            .await
+            .map_err(new_proxy_request_build_error)?;
+        let resp_body = resp.text().await.map_err(new_proxy_request_build_error)?;
 
-        // Send request and get response
-        let response = self.info.http_client().send(request).await?;
-
-        let resp_body = response.into_body();
-
-        let data: Result<OAuthTokenResponse, serde_json::Error> =
-            serde_json::from_reader(resp_body.reader());
+        let data: Result<OAuthTokenResponse, serde_json::Error> = serde_json::from_str(&resp_body);
 
         match data {
             Ok(data) => match data {
@@ -1301,7 +1304,6 @@ impl OpendriveSigner {
                     Ok(())
                 }
                 OAuthTokenResponse::Fail(err) => {
-                    println!("QAQ err {:?}", err.error.message);
                     if err.error.code == 401 {
                         return Err(Error::new(ErrorKind::ConfigInvalid, "invalid credentials"));
                     }
