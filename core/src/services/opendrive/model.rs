@@ -29,7 +29,7 @@ pub enum OAuthGrantType {
 pub struct OAuthTokenResponseBody {
     pub access_token: String,
     pub refresh_token: String,
-    pub token_type: String,
+    // pub token_type: String,
     pub expires_in: i64,
 }
 
@@ -51,14 +51,14 @@ pub enum OpendriveCreateDirResponse {
 pub struct OpendriveCreateDirSuccess {
     #[serde(rename = "FolderID")]
     pub folder_id: String,
-    #[serde(rename = "Name")]
-    pub name: String,
-    #[serde(rename = "DateCreated")]
-    pub date_created: u32,
-    #[serde(rename = "DirUpdateTime")]
-    pub dir_update_time: u32,
-    #[serde(rename = "DateModified")]
-    pub date_modified: u32,
+    // #[serde(rename = "Name")]
+    // pub name: String,
+    // #[serde(rename = "DateCreated")]
+    // pub date_created: u32,
+    // #[serde(rename = "DirUpdateTime")]
+    // pub dir_update_time: u32,
+    // #[serde(rename = "DateModified")]
+    // pub date_modified: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,10 +142,10 @@ pub enum OpendriveGetFolderInfoResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct OpendriveGetListInfo {
-    #[serde(rename = "Name")]
-    pub name: String,
-    #[serde(rename = "ParentFolderID")]
-    pub parent_folder_id: String,
+    // #[serde(rename = "Name")]
+    // pub name: String,
+    // #[serde(rename = "ParentFolderID")]
+    // pub parent_folder_id: String,
     #[serde(rename = "Folders")]
     pub folders: Vec<OpendriveGetFolderInfo>,
     #[serde(rename = "Files")]
@@ -167,6 +167,19 @@ pub enum OpendriveSuccessIgnoreResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct OpendriveUploadFileSuccess {
+    #[serde(rename = "TotalWritten")]
+    pub total_written: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OpendriveUploadFileResponse {
+    Success(OpendriveUploadFileSuccess),
+    Fail(OpendriveDeserializeFail),
+}
+
+#[derive(Debug, Deserialize)]
 pub struct OpendriveCheckIfExists {
     pub result: Vec<String>,
 }
@@ -183,17 +196,17 @@ pub struct OpendriveOpenFileUploadInfo {
     #[serde(rename = "TempLocation")]
     pub temp_location: String,
 
-    #[serde(rename = "RequireCompression")]
-    pub require_compression: bool,
+    // #[serde(rename = "RequireCompression")]
+    // pub require_compression: bool,
 
-    #[serde(rename = "RequireHash")]
-    pub require_hash: bool,
+    // #[serde(rename = "RequireHash")]
+    // pub require_hash: bool,
 
-    #[serde(rename = "RequireHashOnly")]
-    pub require_hash_only: bool,
+    // #[serde(rename = "RequireHashOnly")]
+    // pub require_hash_only: bool,
 
-    #[serde(rename = "SpeedLimit")]
-    pub speed_limit: u64,
+    // #[serde(rename = "SpeedLimit")]
+    // pub speed_limit: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -228,8 +241,8 @@ pub struct OpendriveCreateFileInfo {
     pub file_name: String,
     #[serde(rename = "Size")]
     pub size: String,
-    #[serde(rename = "TempLocation")]
-    pub temp_location: String,
+    // #[serde(rename = "TempLocation")]
+    // pub temp_location: String,
 }
 
 #[derive(Debug, Deserialize)]

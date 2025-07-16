@@ -44,9 +44,7 @@ impl OpendriveWriter {
 
 impl oio::OneShotWrite for OpendriveWriter {
     async fn write_once(&self, bs: Buffer) -> Result<Metadata> {
-        let path = build_abs_path(&self.core.root, &self.path);
-
-        let result = self.core.write_once(&path, bs, &self.op).await?;
+        let result = self.core.write_once(&self.path, bs, &self.op).await?;
 
         let last_modified = parse_datetime_from_from_timestamp(
             result
@@ -68,9 +66,7 @@ impl oio::OneShotWrite for OpendriveWriter {
 
 impl oio::AppendWrite for OpendriveWriter {
     async fn offset(&self) -> Result<u64> {
-        let path = build_abs_path(&self.core.root, &self.path);
-
-        let info = self.core.create_file(&path).await?;
+        let info = self.core.create_file(&self.path).await?;
 
         let offset: u64 = info.size.parse().map_err(parse_numeric_types_error)?;
 
@@ -78,8 +74,7 @@ impl oio::AppendWrite for OpendriveWriter {
     }
 
     async fn append(&self, offset: u64, size: u64, body: Buffer) -> Result<Metadata> {
-        let path = build_abs_path(&self.core.root, &self.path);
-        let result = self.core.write_append(&path, size, offset, body, &self.op).await?;
+        let result = self.core.write_append(&self.path, size, offset, body, &self.op).await?;
 
         let last_modified = parse_datetime_from_from_timestamp(
             result

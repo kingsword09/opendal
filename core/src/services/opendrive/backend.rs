@@ -266,29 +266,36 @@ impl Access for OpendriveAccessor {
     }
 
     async fn create_dir(&self, path: &str, _args: OpCreateDir) -> Result<RpCreateDir> {
-        self.core.opendrive_create_dir(path).await?;
+        let path = build_abs_path(&self.core.root, path);
+        self.core.opendrive_create_dir(&path).await?;
         Ok(RpCreateDir::default())
     }
 
     async fn stat(&self, path: &str, args: OpStat) -> Result<RpStat> {
-        let metadata = self.core.stat(path, Some(args)).await?;
+        let path = build_abs_path(&self.core.root, path);
+        let metadata = self.core.stat(&path, Some(args)).await?;
 
         Ok(RpStat::new(metadata))
     }
 
     async fn read(&self, path: &str, args: OpRead) -> Result<(RpRead, Self::Reader)> {
-        let bs = self.core.read(path, args).await?;
+        let path = build_abs_path(&self.core.root, path);
+        let bs = self.core.read(&path, args).await?;
         Ok((RpRead::new(), bs))
     }
 
     async fn rename(&self, from: &str, to: &str, _args: OpRename) -> Result<RpRename> {
-        self.core.rename(from, to).await?;
+        let from = build_abs_path(&self.core.root, from);
+        let to = build_abs_path(&self.core.root, to);
+        self.core.rename(&from, &to).await?;
 
         Ok(RpRename::default())
     }
 
     async fn copy(&self, from: &str, to: &str, _args: OpCopy) -> Result<RpCopy> {
-        self.core.copy(from, to).await?;
+        let from = build_abs_path(&self.core.root, from);
+        let to = build_abs_path(&self.core.root, to);
+        self.core.copy(&from, &to).await?;
 
         Ok(RpCopy::default())
     }
@@ -301,7 +308,8 @@ impl Access for OpendriveAccessor {
     }
 
     async fn write(&self, path: &str, args: OpWrite) -> Result<(RpWrite, Self::Writer)> {
-        let writer = OpendriveWriter::new(self.core.clone(), path, args.clone());
+        let path = build_abs_path(&self.core.root, path);
+        let writer = OpendriveWriter::new(self.core.clone(), &path, args.clone());
 
         let w = if args.append() {
             OpendriveWriters::Two(oio::AppendWriter::new(writer))
@@ -313,11 +321,8 @@ impl Access for OpendriveAccessor {
     }
 
     async fn list(&self, path: &str, args: OpList) -> Result<(RpList, Self::Lister)> {
-        let lister = OpendriveLister::new(
-            self.core.clone(),
-            path.to_string(),
-            args.recursive(),
-        );
+        let path = build_abs_path(&self.core.root, path);
+        let lister = OpendriveLister::new(self.core.clone(), path, args.recursive());
         Ok((RpList::default(), oio::PageLister::new(lister)))
     }
 }

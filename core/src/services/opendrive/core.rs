@@ -412,9 +412,6 @@ impl OpendriveCore {
     }
 
     async fn rename_folder(&self, from: &str, to: &str) -> Result<()> {
-        let from = build_abs_path(&self.root, from);
-        let to = build_abs_path(&self.root, to);
-
         if from == build_abs_path(&self.root, "") || to == build_abs_path(&self.root, "") {
             return Err(Error::new(
                 ErrorKind::Unsupported,
@@ -446,9 +443,6 @@ impl OpendriveCore {
     }
 
     async fn rename_file(&self, from: &str, to: &str) -> Result<()> {
-        let from = build_abs_path(&self.root, from);
-        let to = build_abs_path(&self.root, to);
-
         let file_id = self.get_file_id(&from).await?;
         let file_name = get_basename(&to);
 
@@ -473,9 +467,6 @@ impl OpendriveCore {
     }
 
     async fn copy_folder(&self, from: &str, to: &str) -> Result<()> {
-        let from = build_abs_path(&self.root, from);
-        let to = build_abs_path(&self.root, to);
-
         let dst_folder_path = get_parent(&to);
         let folder_name = get_basename(&to);
 
@@ -506,9 +497,6 @@ impl OpendriveCore {
     }
 
     async fn copy_file(&self, from: &str, to: &str) -> Result<()> {
-        let from = build_abs_path(&self.root, from);
-        let to = build_abs_path(&self.root, to);
-
         let dst_folder_path = get_parent(&to);
         let file_name = get_basename(&to);
 
@@ -772,7 +760,7 @@ impl OpendriveCore {
         temp_location: &str,
         offset: usize,
         chunk: Buffer,
-    ) -> Result<()> {
+    ) -> Result<usize> {
         let url = format!(
             "{}/upload/upload_file_chunk.json",
             constants::OPENDRIVE_BASE_URL
@@ -788,7 +776,11 @@ impl OpendriveCore {
                 format!("form-data; name=\"file_data\"; filename=\"{file_name}\"")
                     .parse()
                     .unwrap(),
-            ).header(header::CONTENT_TYPE, "application/octet-stream".parse().unwrap())
+            )
+            // .header(
+            //     header::CONTENT_TYPE,
+            //     "application/octet-stream".parse().unwrap(),
+            // )
             .content(chunk);
 
         let multipart = Multipart::new()
@@ -803,13 +795,40 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
-        self.parse_response_unit(resp)
+        // Debug: print the raw response
+        let body_bytes = resp.body().to_bytes();
+        let raw_body = String::from_utf8_lossy(&body_bytes);
+        println!("QAQ upload_file_chunk raw response: {}", raw_body);
+
+        // Try to parse as success response first, if it fails, just return Ok(())
+        // because upload_file_chunk might return different response format
+        let parsed_res: Result<OpendriveUploadFileResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+        println!("QAQ xxx parsed_res {:?}", parsed_res);
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveUploadFileResponse::Success(result) => Ok(result.total_written),
+                OpendriveUploadFileResponse::Fail(result) => {
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
+                    } else if result.error.code == 409 {
+                        return Err(Error::new(ErrorKind::AlreadyExists, result.error.message));
+                    }
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
+                }
+            },
+            Err(_) => Err(Error::new(
+                ErrorKind::Unexpected,
+                format!("Failed to parse upload response: {}", raw_body),
+            )),
+        }
     }
 
     async fn upload_file_chunk_second(
         &self,
         file_id: &str,
         file_name: &str,
+        temp_location: &str,
         chunk: Buffer,
     ) -> Result<()> {
         let url = format!(
@@ -823,15 +842,21 @@ impl OpendriveCore {
         let req = Request::post(&url).extension(Operation::Write);
 
         let file_part = FormDataPart::new("file_data")
-            // .header(
-            //     header::CONTENT_DISPOSITION,
-            //     format!("form-data; name=\"file\"; filename=\"{file_name}\"")
-            //         .parse()
-            //         .unwrap(),
-            // )
+            .header(
+                header::CONTENT_DISPOSITION,
+                format!("form-data; name=\"file_data\"; filename=\"{file_name}\"")
+                    .parse()
+                    .unwrap(),
+            )
+            .header(
+                header::CONTENT_TYPE,
+                "application/octet-stream".parse().unwrap(),
+            )
             .content(chunk);
 
-        let multipart = Multipart::new().part(file_part);
+        let multipart = Multipart::new()
+            .part(file_part)
+            .part(FormDataPart::new("temp_location").content(temp_location.to_string()));
 
         let req = multipart.apply(req)?;
 
@@ -1142,9 +1167,7 @@ impl OpendriveCore {
     }
 
     pub(crate) async fn rename(&self, from: &str, to: &str) -> Result<()> {
-        let path = build_abs_path(&self.root, from);
-
-        let metadata = self.stat(&path, None).await?;
+        let metadata = self.stat(from, None).await?;
 
         if metadata.is_file() {
             self.rename_file(from, to).await
@@ -1251,8 +1274,6 @@ impl OpendriveCore {
         }
 
         let result = self.create_file(path).await?;
-        self.close_file_upload(&result.file_id, 0, Some(result.clone().temp_location))
-            .await?;
 
         Ok(result)
     }
@@ -1263,18 +1284,31 @@ impl OpendriveCore {
         chunk: Buffer,
         op: &OpWrite,
     ) -> Result<OpendriveGetFileInfo> {
-        println!("QAQ path: {}", path);
+        println!("QAQ write_once path: {}", path);
         let info = self.write_prepare(path, op).await?;
+        println!("QAQ write_once after write_prepare");
 
         let file_size = chunk.len() as u64;
+        println!("QAQ write_once file_size: {}", file_size);
 
-        self.open_file_upload(&info.file_id, file_size).await?;
+        let opened = self.open_file_upload(&info.file_id, file_size).await?;
+        println!("QAQ write_once after open_file_upload");
 
-        self.upload_file_chunk(&info.file_id, &info.file_name, &info.temp_location, 0, chunk)
+        let file_size = self
+            .upload_file_chunk(
+                &info.file_id,
+                &info.file_name,
+                &opened.temp_location,
+                0,
+                chunk,
+            )
             .await?;
+        println!("QAQ write_once after upload_file_chunk");
+        // self.upload_file_chunk_second(&info.file_id, &info.file_name, &opened.temp_location, chunk)
+        //     .await?;
 
         let result = self
-            .close_file_upload(&info.file_id, file_size, Some(info.temp_location))
+            .close_file_upload(&info.file_id, file_size as u64, Some(opened.temp_location))
             .await?;
 
         Ok(OpendriveGetFileInfo {
