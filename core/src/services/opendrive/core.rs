@@ -830,7 +830,7 @@ impl OpendriveCore {
         file_name: &str,
         temp_location: &str,
         chunk: Buffer,
-    ) -> Result<()> {
+    ) -> Result<usize> {
         let url = format!(
             "{}/upload/upload_file_chunk2.json/{}/{}",
             constants::OPENDRIVE_BASE_URL,
@@ -867,7 +867,27 @@ impl OpendriveCore {
         let raw_body = String::from_utf8_lossy(&body_bytes);
         println!("QAQ upload_file_chunk_second raw response: {}", raw_body);
 
-        self.parse_response_unit(resp)
+        // self.parse_response_unit(resp)
+        let parsed_res: Result<OpendriveUploadFileResponse, serde_json::Error> =
+            serde_json::from_reader(resp.body().clone().reader());
+        println!("QAQ xxx parsed_res {:?}", parsed_res);
+        match parsed_res {
+            Ok(parsed_res) => match parsed_res {
+                OpendriveUploadFileResponse::Success(result) => Ok(result.total_written),
+                OpendriveUploadFileResponse::Fail(result) => {
+                    if result.error.code == 404 {
+                        return Err(Error::new(ErrorKind::NotFound, result.error.message));
+                    } else if result.error.code == 409 {
+                        return Err(Error::new(ErrorKind::AlreadyExists, result.error.message));
+                    }
+                    Err(Error::new(ErrorKind::Unexpected, result.error.message))
+                }
+            },
+            Err(_) => Err(Error::new(
+                ErrorKind::Unexpected,
+                format!("Failed to parse upload response: {}", raw_body),
+            )),
+        }
     }
 
     async fn close_file_upload(
@@ -994,8 +1014,10 @@ impl OpendriveCore {
     }
 
     pub(crate) async fn stat(&self, path: &str, args: Option<OpStat>) -> Result<Metadata> {
+        println!("QAQ stat path: {}", path);
         match self.get_folder_id(path).await {
             Ok(folder_id) => {
+                println!("QAQ stat found as folder: {}", folder_id);
                 let result = self.get_folder_info(&folder_id).await?;
 
                 // Parse since time once for both time-based conditions
@@ -1052,9 +1074,11 @@ impl OpendriveCore {
                 Ok(self.parse_folder_metadata(result).await?)
             }
             Err(err) => {
-                // If not found as file, try folder
+                println!("QAQ stat folder not found, trying as file: {:?}", err);
+                // If not found as folder, try file
                 if matches!(err.kind(), ErrorKind::NotFound) {
                     let file_id = self.get_file_id(path).await?;
+                    println!("QAQ stat found as file: {}", file_id);
 
                     let result = self.get_file_info(&file_id).await?;
 
@@ -1304,7 +1328,8 @@ impl OpendriveCore {
             )
             .await?;
         println!("QAQ write_once after upload_file_chunk");
-        // self.upload_file_chunk_second(&info.file_id, &info.file_name, &opened.temp_location, chunk)
+        // let file_size = self
+        //     .upload_file_chunk_second(&info.file_id, &info.file_name, &opened.temp_location, chunk)
         //     .await?;
 
         let result = self
