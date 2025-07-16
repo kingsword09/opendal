@@ -782,21 +782,21 @@ impl OpendriveCore {
         let req = Request::post(&url).extension(Operation::Write);
 
         let chunk_size = chunk.len();
-        let file_part = FormDataPart::new("file")
+        let file_part = FormDataPart::new("file_data")
             .header(
                 header::CONTENT_DISPOSITION,
-                format!("form-data; name=\"file\"; filename=\"{file_name}\"")
+                format!("form-data; name=\"file_data\"; filename=\"{file_name}\"")
                     .parse()
                     .unwrap(),
-            )
+            ).header(header::CONTENT_TYPE, "application/octet-stream".parse().unwrap())
             .content(chunk);
 
         let multipart = Multipart::new()
             .part(FormDataPart::new("session_id").content(constants::OPENDRIVE_SESSION_ID))
             .part(FormDataPart::new("file_id").content(file_id.to_string()))
             .part(FormDataPart::new("temp_location").content(temp_location.to_string()))
-            .part(FormDataPart::new("chunk_offset").content(offset.to_string()))
             .part(FormDataPart::new("chunk_size").content(chunk_size.to_string()))
+            .part(FormDataPart::new("chunk_offset").content(offset.to_string()))
             .part(file_part);
 
         let req = multipart.apply(req)?;
@@ -822,13 +822,13 @@ impl OpendriveCore {
 
         let req = Request::post(&url).extension(Operation::Write);
 
-        let file_part = FormDataPart::new("file")
-            .header(
-                header::CONTENT_DISPOSITION,
-                format!("form-data; name=\"file\"; filename=\"{file_name}\"")
-                    .parse()
-                    .unwrap(),
-            )
+        let file_part = FormDataPart::new("file_data")
+            // .header(
+            //     header::CONTENT_DISPOSITION,
+            //     format!("form-data; name=\"file\"; filename=\"{file_name}\"")
+            //         .parse()
+            //         .unwrap(),
+            // )
             .content(chunk);
 
         let multipart = Multipart::new().part(file_part);
@@ -1270,8 +1270,7 @@ impl OpendriveCore {
 
         self.open_file_upload(&info.file_id, file_size).await?;
 
-        let file_name = get_basename(path);
-        self.upload_file_chunk_second(&info.file_id, file_name, chunk)
+        self.upload_file_chunk(&info.file_id, &info.file_name, &info.temp_location, 0, chunk)
             .await?;
 
         let result = self
@@ -1280,7 +1279,7 @@ impl OpendriveCore {
 
         Ok(OpendriveGetFileInfo {
             file_id: info.file_id,
-            name: file_name.to_string(),
+            name: info.file_name,
             size: result.size.to_string(),
             version: result.version,
             date_modified: result.date_modified,

@@ -224,6 +224,8 @@ pub enum OpendriveCloseFileUploadResponse {
 pub struct OpendriveCreateFileInfo {
     #[serde(rename = "FileId")]
     pub file_id: String,
+    #[serde(rename = "Name")]
+    pub file_name: String,
     #[serde(rename = "Size")]
     pub size: String,
     #[serde(rename = "TempLocation")]
