@@ -149,7 +149,9 @@ impl Builder for OpendriveBuilder {
     fn build(self) -> Result<impl Access> {
         // let root = self.config.root.unwrap_or_default();
         // let root = "/".to_string();
+        println!("backend use root before {:?}", &self.config.root);
         let root = normalize_root(&self.config.root.unwrap_or_default());
+        println!("backend use root {root}");
         debug!("backend use root {root}");
 
         let username = match self.config.username {

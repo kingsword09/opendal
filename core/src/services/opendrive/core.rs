@@ -128,7 +128,10 @@ impl OpendriveCore {
 
         // Normalize path by removing trailing slash
         let normalized_path = path.trim_end_matches('/');
-        println!("QAQ get_folder_id {} (normalized: {})", path, normalized_path);
+        println!(
+            "QAQ get_folder_id {} (normalized: {})",
+            path, normalized_path
+        );
 
         let url = format!("{}/folder/idbypath.json", constants::OPENDRIVE_BASE_URL);
         let url = self.sign(&url).await?;
@@ -274,7 +277,10 @@ impl OpendriveCore {
         path: &str,
         folder_id: Option<String>,
     ) -> Result<String> {
-        println!("QAQ create_folder name: {}, path: {}, parent_id: {:?}", name, path, folder_id);
+        println!(
+            "QAQ create_folder name: {}, path: {}, parent_id: {:?}",
+            name, path, folder_id
+        );
         let url = format!("{}/folder.json", constants::OPENDRIVE_BASE_URL);
         let url = self.sign(&url).await?;
 
@@ -308,9 +314,12 @@ impl OpendriveCore {
                 OpendriveCreateDirResponse::Success(result) => {
                     println!("QAQ create_folder success: {}", result.folder_id);
                     Ok(result.folder_id)
-                },
+                }
                 OpendriveCreateDirResponse::Fail(result) => {
-                    println!("QAQ create_folder fail: code={}, message={}", result.error.code, result.error.message);
+                    println!(
+                        "QAQ create_folder fail: code={}, message={}",
+                        result.error.code, result.error.message
+                    );
                     if result.error.code == 409 {
                         let folder_id = self.get_folder_id(path).await?;
                         return Ok(folder_id);
@@ -613,10 +622,7 @@ impl OpendriveCore {
         let file_name = get_basename(path);
         println!("QAQ parent:{} , filename: {}", parent, file_name);
 
-        // Ensure parent directory exists before checking file
-        if parent != "/" {
-            self.opendrive_create_dir(parent).await?;
-        }
+        // Get folder ID directly, don't create directory here as it will be created in write_prepare
         let folder_id = self.get_folder_id(parent).await?;
         println!("QAQ folder_id {}", &folder_id);
 
@@ -642,7 +648,7 @@ impl OpendriveCore {
         let parsed_res: Result<OpendriveCheckIfExistsResponse, serde_json::Error> =
             serde_json::from_reader(resp.body().clone().reader());
 
-            println!("QAQ parsed_res {:?}", parsed_res);
+        println!("QAQ parsed_res {:?}", parsed_res);
 
         match parsed_res {
             Ok(parsed_res) => match parsed_res {
@@ -670,10 +676,7 @@ impl OpendriveCore {
         let file_name = get_basename(path);
         println!("QAQ create_file {}", path);
 
-        // Ensure parent directory exists before creating file
-        if parent != "/" {
-            self.opendrive_create_dir(parent).await?;
-        }
+        // Parent directory should already exist when this is called from write_prepare
         let folder_id = self.get_folder_id(parent).await?;
 
         let url = format!("{}/upload/create_file.json", constants::OPENDRIVE_BASE_URL);
@@ -913,6 +916,19 @@ impl OpendriveCore {
         println!("QAQ opendrive_create_dir {}", path);
 
         let path = path.trim_end_matches('/');
+
+        // First check if the directory already exists
+        match self.get_folder_id(path).await {
+            Ok(_) => {
+                println!("QAQ directory {} already exists, skipping creation", path);
+                return Ok(());
+            }
+            Err(err) if matches!(err.kind(), ErrorKind::NotFound) => {
+                // Directory doesn't exist, continue with creation
+            }
+            Err(err) => return Err(err),
+        }
+
         let path_parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
         let mut current_path = String::new();
@@ -924,6 +940,22 @@ impl OpendriveCore {
                 current_path = folder.to_string();
             } else {
                 current_path = format!("{}/{}", current_path, folder);
+            }
+
+            // Check if this intermediate directory already exists
+            match self.get_folder_id(&current_path).await {
+                Ok(existing_folder_id) => {
+                    println!(
+                        "QAQ intermediate directory {} already exists with id {}",
+                        current_path, existing_folder_id
+                    );
+                    parent_folder_id = Some(existing_folder_id);
+                    continue;
+                }
+                Err(err) if matches!(err.kind(), ErrorKind::NotFound) => {
+                    // Directory doesn't exist, create it
+                }
+                Err(err) => return Err(err),
             }
 
             // Create folder and get its ID
@@ -1200,7 +1232,15 @@ impl OpendriveCore {
         path: &str,
         op: &OpWrite,
     ) -> Result<OpendriveCreateFileInfo> {
-        println!("QAQ if prepare {}", path);
+        println!("QAQ write_prepare {}", path);
+
+        // Ensure parent directory exists first
+        let parent = get_parent(path);
+        if parent != "/" {
+            self.opendrive_create_dir(parent).await?;
+        }
+
+        // Now check if file exists (parent directory is guaranteed to exist)
         let if_exists = self.check_if_file_exists(path).await?;
         println!("QAQ if_exists {}", if_exists);
 
@@ -1208,12 +1248,6 @@ impl OpendriveCore {
             if op.if_not_exists() {
                 return Err(Error::new(ErrorKind::AlreadyExists, "file already exists"));
             }
-        }
-
-        // Ensure parent directory exists before creating file
-        let parent = get_parent(path);
-        if parent != "/" {
-            self.opendrive_create_dir(parent).await?;
         }
 
         let result = self.create_file(path).await?;
