@@ -35,25 +35,25 @@ pub fn tests(op: &Operator, tests: &mut Vec<Trial>) {
     if cap.read && cap.write {
         tests.extend(async_trials!(
             op,
-            // test_read_full,
-            // test_read_range,
-            test_reader
-            // test_reader_with_if_match,
-            // test_reader_with_if_none_match,
-            // test_reader_with_if_modified_since,
-            // test_reader_with_if_unmodified_since,
-            // test_read_not_exist,
-            // test_read_with_if_match,
-            // test_read_with_if_none_match,
-            // test_read_with_if_modified_since,
-            // test_read_with_if_unmodified_since,
-            // test_read_with_dir_path,
-            // test_read_with_special_chars,
-            // test_read_with_override_cache_control,
-            // test_read_with_override_content_disposition,
-            // test_read_with_override_content_type,
-            // test_read_with_version,
-            // test_read_with_not_existing_version
+            test_read_full,
+            test_read_range,
+            test_reader,
+            test_reader_with_if_match,
+            test_reader_with_if_none_match,
+            test_reader_with_if_modified_since,
+            test_reader_with_if_unmodified_since,
+            test_read_not_exist,
+            test_read_with_if_match,
+            test_read_with_if_none_match,
+            test_read_with_if_modified_since,
+            test_read_with_if_unmodified_since,
+            test_read_with_dir_path,
+            test_read_with_special_chars,
+            test_read_with_override_cache_control,
+            test_read_with_override_content_disposition,
+            test_read_with_override_content_type,
+            test_read_with_version,
+            test_read_with_not_existing_version
         ))
     }
 

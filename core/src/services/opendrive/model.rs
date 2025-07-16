@@ -184,7 +184,16 @@ pub struct OpendriveOpenFileUploadInfo {
     pub temp_location: String,
 
     #[serde(rename = "RequireCompression")]
-    pub require_compression: usize,
+    pub require_compression: bool,
+
+    #[serde(rename = "RequireHash")]
+    pub require_hash: bool,
+
+    #[serde(rename = "RequireHashOnly")]
+    pub require_hash_only: bool,
+
+    #[serde(rename = "SpeedLimit")]
+    pub speed_limit: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -197,7 +206,7 @@ pub enum OpendriveOpenFileUploadResponse {
 #[derive(Debug, Deserialize)]
 pub struct OpendriveCloseFileUploadInfo {
     #[serde(rename = "Size")]
-    pub size: String,
+    pub size: u64,
     #[serde(rename = "Version")]
     pub version: String,
     #[serde(rename = "DateModified")]

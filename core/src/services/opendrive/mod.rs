@@ -21,8 +21,8 @@ mod backend;
 mod core;
 #[cfg(feature = "services-opendrive")]
 mod error;
-// #[cfg(feature = "services-opendrive")]
-// mod lister;
+#[cfg(feature = "services-opendrive")]
+mod lister;
 #[cfg(feature = "services-opendrive")]
 mod writer;
 #[cfg(feature = "services-opendrive")]

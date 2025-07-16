@@ -126,11 +126,15 @@ impl OpendriveCore {
             return Ok(constants::OPENDRIVE_SLASH_ROOT_FOLDER_ID.to_string());
         }
 
+        // Normalize path by removing trailing slash
+        let normalized_path = path.trim_end_matches('/');
+        println!("QAQ get_folder_id {} (normalized: {})", path, normalized_path);
+
         let url = format!("{}/folder/idbypath.json", constants::OPENDRIVE_BASE_URL);
         let url = self.sign(&url).await?;
 
         let body = json!({
-            "path": path,
+            "path": normalized_path,
             "session_id": constants::OPENDRIVE_SESSION_ID
         });
 
@@ -143,6 +147,8 @@ impl OpendriveCore {
 
         let parsed_res: Result<OpendriveGetFolderIdResponse, serde_json::Error> =
             serde_json::from_reader(res.body().clone().reader());
+
+        println!("QAQ parsed_res {:?}", parsed_res);
 
         match parsed_res {
             Ok(parsed_res) => match parsed_res {
@@ -268,6 +274,7 @@ impl OpendriveCore {
         path: &str,
         folder_id: Option<String>,
     ) -> Result<String> {
+        println!("QAQ create_folder name: {}, path: {}, parent_id: {:?}", name, path, folder_id);
         let url = format!("{}/folder.json", constants::OPENDRIVE_BASE_URL);
         let url = self.sign(&url).await?;
 
@@ -294,10 +301,16 @@ impl OpendriveCore {
         let parsed_res: Result<OpendriveCreateDirResponse, serde_json::Error> =
             serde_json::from_reader(res.body().clone().reader());
 
+        println!("QAQ create_folder parsed_res: {:?}", parsed_res);
+
         match parsed_res {
             Ok(parsed_res) => match parsed_res {
-                OpendriveCreateDirResponse::Success(result) => Ok(result.folder_id),
+                OpendriveCreateDirResponse::Success(result) => {
+                    println!("QAQ create_folder success: {}", result.folder_id);
+                    Ok(result.folder_id)
+                },
                 OpendriveCreateDirResponse::Fail(result) => {
+                    println!("QAQ create_folder fail: code={}, message={}", result.error.code, result.error.message);
                     if result.error.code == 409 {
                         let folder_id = self.get_folder_id(path).await?;
                         return Ok(folder_id);
@@ -596,12 +609,16 @@ impl OpendriveCore {
     }
 
     async fn check_if_file_exists(&self, path: &str) -> Result<bool> {
-        let path = build_abs_path(&self.root, path);
+        let parent = get_parent(path);
+        let file_name = get_basename(path);
+        println!("QAQ parent:{} , filename: {}", parent, file_name);
 
-        let parent = get_parent(&path);
-        let file_name = get_basename(&path);
-
+        // Ensure parent directory exists before checking file
+        if parent != "/" {
+            self.opendrive_create_dir(parent).await?;
+        }
         let folder_id = self.get_folder_id(parent).await?;
+        println!("QAQ folder_id {}", &folder_id);
 
         let url = format!(
             "{}/upload/checkfileexistsbyname.json/{}",
@@ -624,6 +641,8 @@ impl OpendriveCore {
 
         let parsed_res: Result<OpendriveCheckIfExistsResponse, serde_json::Error> =
             serde_json::from_reader(resp.body().clone().reader());
+
+            println!("QAQ parsed_res {:?}", parsed_res);
 
         match parsed_res {
             Ok(parsed_res) => match parsed_res {
@@ -649,7 +668,12 @@ impl OpendriveCore {
     pub(crate) async fn create_file(&self, path: &str) -> Result<OpendriveCreateFileInfo> {
         let parent = get_parent(path);
         let file_name = get_basename(path);
+        println!("QAQ create_file {}", path);
 
+        // Ensure parent directory exists before creating file
+        if parent != "/" {
+            self.opendrive_create_dir(parent).await?;
+        }
         let folder_id = self.get_folder_id(parent).await?;
 
         let url = format!("{}/upload/create_file.json", constants::OPENDRIVE_BASE_URL);
@@ -714,6 +738,11 @@ impl OpendriveCore {
             .map_err(new_request_build_error)?;
 
         let resp = self.info.http_client().send(req).await?;
+
+        // Debug: print the raw response
+        let body_bytes = resp.body().to_bytes();
+        let raw_body = String::from_utf8_lossy(&body_bytes);
+        println!("QAQ open_file_upload raw response: {}", raw_body);
 
         let parsed_res: Result<OpendriveOpenFileUploadResponse, serde_json::Error> =
             serde_json::from_reader(resp.body().clone().reader());
@@ -805,6 +834,11 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
+        // Debug: print the raw response
+        let body_bytes = resp.body().to_bytes();
+        let raw_body = String::from_utf8_lossy(&body_bytes);
+        println!("QAQ upload_file_chunk_second raw response: {}", raw_body);
+
         self.parse_response_unit(resp)
     }
 
@@ -842,6 +876,11 @@ impl OpendriveCore {
 
         let resp = self.info.http_client().send(req).await?;
 
+        // Debug: print the raw response
+        let body_bytes = resp.body().to_bytes();
+        let raw_body = String::from_utf8_lossy(&body_bytes);
+        println!("QAQ close_file_upload raw response: {}", raw_body);
+
         let parsed_res: Result<OpendriveCloseFileUploadResponse, serde_json::Error> =
             serde_json::from_reader(resp.body().clone().reader());
 
@@ -871,16 +910,21 @@ impl OpendriveCore {
         if path == "/" {
             return Ok(());
         }
+        println!("QAQ opendrive_create_dir {}", path);
 
-        let path = path.trim_start_matches('/').trim_end_matches('/');
+        let path = path.trim_end_matches('/');
+        let path_parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
         let mut current_path = String::new();
         let mut parent_folder_id = None;
 
         // Iterate through each folder in the path
-        for folder in path.split('/') {
-            current_path.push('/');
-            current_path.push_str(folder);
+        for folder in path_parts {
+            if current_path.is_empty() {
+                current_path = folder.to_string();
+            } else {
+                current_path = format!("{}/{}", current_path, folder);
+            }
 
             // Create folder and get its ID
             let folder_id = self
@@ -1120,9 +1164,6 @@ impl OpendriveCore {
         let mut entry_list = vec![];
 
         let info = self.get_folder_info(folder_id).await?;
-        let metadata = self.parse_folder_metadata(info.clone()).await?;
-        entry_list.push(Entry::new(path.clone(), metadata));
-
         let (files, folders) = self.recursive_list(info, &path).await?;
         entry_list.extend(files);
 
@@ -1159,21 +1200,20 @@ impl OpendriveCore {
         path: &str,
         op: &OpWrite,
     ) -> Result<OpendriveCreateFileInfo> {
+        println!("QAQ if prepare {}", path);
         let if_exists = self.check_if_file_exists(path).await?;
+        println!("QAQ if_exists {}", if_exists);
 
         if if_exists {
             if op.if_not_exists() {
                 return Err(Error::new(ErrorKind::AlreadyExists, "file already exists"));
             }
-        } else {
-            let result = self.get_folder_id(path).await;
+        }
 
-            if result.is_ok() {
-                return Err(Error::new(
-                    ErrorKind::IsADirectory,
-                    "directory does not support write operations",
-                ));
-            }
+        // Ensure parent directory exists before creating file
+        let parent = get_parent(path);
+        if parent != "/" {
+            self.opendrive_create_dir(parent).await?;
         }
 
         let result = self.create_file(path).await?;
@@ -1189,6 +1229,7 @@ impl OpendriveCore {
         chunk: Buffer,
         op: &OpWrite,
     ) -> Result<OpendriveGetFileInfo> {
+        println!("QAQ path: {}", path);
         let info = self.write_prepare(path, op).await?;
 
         let file_size = chunk.len() as u64;
@@ -1206,7 +1247,7 @@ impl OpendriveCore {
         Ok(OpendriveGetFileInfo {
             file_id: info.file_id,
             name: file_name.to_string(),
-            size: result.size,
+            size: result.size.to_string(),
             version: result.version,
             date_modified: result.date_modified,
         })
@@ -1242,7 +1283,7 @@ impl OpendriveCore {
         Ok(OpendriveGetFileInfo {
             file_id,
             name: file_name.to_string(),
-            size: info.size,
+            size: info.size.to_string(),
             version: info.version,
             date_modified: info.date_modified,
         })

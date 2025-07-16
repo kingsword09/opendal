@@ -30,6 +30,7 @@ use crate::services::opendrive::core::constants;
 use crate::services::opendrive::core::OpendriveSigner;
 use crate::services::opendrive::delete::OpendriveDeleter;
 use crate::services::opendrive::error::new_proxy_request_build_error;
+use crate::services::opendrive::lister::OpendriveLister;
 use crate::services::opendrive::writer::OpendriveWriter;
 use crate::services::opendrive::writer::OpendriveWriters;
 use crate::services::OpendriveConfig;
@@ -255,7 +256,7 @@ impl Access for OpendriveAccessor {
     type Reader = Buffer;
     // type Lister = oio::PageLister<OpendriveLister>;
     type Writer = OpendriveWriters;
-    type Lister = ();
+    type Lister = oio::PageLister<OpendriveLister>;
     type Deleter = oio::OneShotDeleter<OpendriveDeleter>;
 
     fn info(&self) -> Arc<AccessorInfo> {
@@ -307,5 +308,14 @@ impl Access for OpendriveAccessor {
         };
 
         Ok((RpWrite::default(), w))
+    }
+
+    async fn list(&self, path: &str, args: OpList) -> Result<(RpList, Self::Lister)> {
+        let lister = OpendriveLister::new(
+            self.core.clone(),
+            path.to_string(),
+            args.recursive(),
+        );
+        Ok((RpList::default(), oio::PageLister::new(lister)))
     }
 }
