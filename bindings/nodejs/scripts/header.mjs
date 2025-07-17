@@ -19,7 +19,15 @@
 
 import fs from 'fs'
 
-const files = ['generated.js', 'generated.d.ts']
+const files = [
+  'generated.js',
+  'generated.d.ts',
+  'browser.js',
+  'wasi-worker-browser.mjs',
+  'wasi-worker.mjs',
+  'opendal.wasi-browser.js',
+  'opendal.wasi.cjs',
+]
 
 for (const path of files) {
   const data = fs.readFileSync(path, 'utf8')

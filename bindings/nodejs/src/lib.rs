@@ -1070,7 +1070,7 @@ pub struct Layer {
 impl Operator {
     /// Add a layer to this operator.
     #[napi]
-    pub fn layer(&self, layer: External<Layer>) -> Result<Self> {
+    pub fn layer(&self, layer: &Layer) -> Result<Self> {
         let async_op = layer.inner.layer(self.async_op.clone());
 
         let blocking_op = {
