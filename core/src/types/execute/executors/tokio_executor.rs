@@ -25,7 +25,21 @@ pub struct TokioExecutor {}
 impl Execute for TokioExecutor {
     /// Tokio's JoinHandle has its own `abort` support, so dropping handle won't cancel the task.
     fn execute(&self, f: BoxedStaticFuture<()>) {
-        let _handle = tokio::task::spawn(f);
+        // 条件编译：当目标架构是 "wasm32" 时，编译并执行这段代码。
+        #[cfg(target_arch = "wasm32")]
+        {
+            // 对于 WASM，BoxedStaticFuture 是 !Send 的 LocalBoxFuture。
+            // 我们必须使用 spawn_local，它会在当前线程上运行 Future。
+            let _handle = tokio::task::spawn_local(f);
+        }
+
+        // 条件编译：当目标架构 *不是* "wasm32" 时，编译并执行这段代码。
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // 对于所有原生平台，BoxedStaticFuture 是 Send 的 BoxFuture。
+            // 我们可以安全地使用 spawn，它可以在线程池中的任何线程上运行 Future。
+            let _handle = tokio::task::spawn(f);
+        }
     }
 }
 

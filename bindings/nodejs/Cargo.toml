@@ -163,3 +163,6 @@ tokio = "1"
 
 [build-dependencies]
 napi-build = "2.2.2"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }

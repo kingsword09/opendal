@@ -18,5 +18,5 @@
 [target.aarch64-unknown-linux-musl]
 linker = "aarch64-linux-musl-gcc"
 
-[build]
+[target.wasm32-wasip1-threads]
 rustflags = ["--cfg", "tokio_unstable"]

@@ -16,8 +16,7 @@
       "aarch64-apple-darwin",
       "aarch64-unknown-linux-gnu",
       "aarch64-unknown-linux-musl",
-      "aarch64-pc-windows-msvc",
-      "wasm32-wasip1-threads"
+      "aarch64-pc-windows-msvc"
     ],
     "wasm": {
       "initialMemory": 16384,
@@ -67,6 +66,7 @@
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.468.0",
+    "@emnapi/core": "^1.4.4",
     "@napi-rs/cli": "^3.0.0",
     "@napi-rs/wasm-runtime": "^1.0.0",
     "@swc-node/register": "^1.6.2",
@@ -85,15 +85,18 @@
     "node": ">= 10"
   },
   "scripts": {
-    "build": "napi build --platform --features \"${NAPI_FEATURES:-}\" --target \"wasm32-wasip1-threads\" --release --js generated.js --dts generated.d.ts && node ./scripts/header.mjs",
+    "build": "napi build --platform --features \"${NAPI_FEATURES:-}\" --target \"${NAPI_TARGET:-}\" --release --js generated.js --dts generated.d.ts && node ./scripts/header.mjs",
     "build:debug": "napi build --platform --features \"${NAPI_FEATURES:-}\" --target \"${NAPI_TARGET:-}\" --js generated.js --dts generated.d.ts && node ./scripts/header.mjs",
+    "build:debug:wasm": "RUST_TARGET=wasm32-wasip1-threads node scripts/build.mjs && node ./scripts/header.mjs",
+    "build:release:wasm": "RUST_TARGET=wasm32-wasip1-threads node scripts/build.mjs --profile release-wasi && node ./scripts/header.mjs",
     "build:theme": "tsc -p ./tsconfig.theme.json",
     "docs": "typedoc",
     "format": "prettier --write .",
     "test": "vitest",
     "bench": "node -r dotenv/config ./benchmark/node.js dotenv_config_path=./.env",
     "bench:deno": "deno bench --unstable-detect-cjs ./benchmark/deno.ts --allow-read --allow-ffi --allow-net --allow-env",
-    "prepublishOnly": "napi prepublish -t npm --skip-gh-release"
+    "prepublishOnly": "napi prepublish -t npm --skip-gh-release",
+    "move-binding": "node scripts/move-binding.mjs"
   },
   "prettier": {
     "overrides": [

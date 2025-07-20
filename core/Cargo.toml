@@ -33,6 +33,9 @@ version = "0.54.0"
 [lints.clippy]
 unused_async = "warn"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
+
 [package.metadata.docs.rs]
 all-features = true
 
