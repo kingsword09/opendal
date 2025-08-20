@@ -20,7 +20,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace DotOpenDAL;
+namespace Apache.OpenDAL;
 
 public class BlockingOperator
 {

@@ -17,7 +17,9 @@
  * under the License.
  */
 
-namespace DotOpenDAL.Tests;
+using Apache.OpenDAL;
+
+namespace Apache.OpenDAL.Tests;
 
 public class BlockingOperatorTest
 {

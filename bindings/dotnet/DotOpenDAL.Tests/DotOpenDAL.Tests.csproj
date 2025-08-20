@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net7.0</TargetFramework>
+        <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
 
@@ -9,9 +9,26 @@
         <IsTestProject>true</IsTestProject>
     </PropertyGroup>
 
+  <!-- Map .NET Configuration to Rust profile folder names -->
+  <PropertyGroup>
+    <RustProfile Condition="'$(Configuration)' == 'Debug'">debug</RustProfile>
+    <RustProfile Condition="'$(Configuration)' == 'Release'">release</RustProfile>
+  </PropertyGroup>
+
     <ItemGroup>
         <ProjectReference Include="../DotOpenDAL/DotOpenDAL.csproj" />
     </ItemGroup>
+
+  <!-- Ensure native Rust lib is present in test output so DllImport can find it -->
+  <Target Name="CopyNativeLibToTestOutput" AfterTargets="Build">
+    <ItemGroup>
+      <NativeLibs Include="../target/$(RustProfile)/*opendal_dotnet.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(NativeLibs)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(NativeLibs.Identity)')" />
+  </Target>
     <ItemGroup>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.5.0" />
         <PackageReference Include="xunit" Version="2.4.2" />
