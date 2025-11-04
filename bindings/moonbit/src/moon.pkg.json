@@ -1,0 +1,13 @@
+{
+  "import": [],
+  "test-import": [],
+  "supported-targets": ["native"],
+  "link": {
+    "native": {
+      "cc": "clang",
+      "cc-flags": "-I../c/include",
+      "cc-link-flags": "-L../c/target/release -lopendal_c"
+    }
+  },
+  "native-stub": ["wrapper.c"]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "opendal/lib",
+  "version": "0.1.0",
+  "readme": "README.md",
+  "repository": "https://github.com/apache/opendal",
+  "license": "Apache-2.0",
+  "keywords": [
+    "opendal",
+    "storage",
+    "ffi"
+  ],
+  "description": "MoonBit bindings for Apache OpenDAL",
+  "source": "src",
+  "preferred-target": "native",
+  "deps": {}
+}

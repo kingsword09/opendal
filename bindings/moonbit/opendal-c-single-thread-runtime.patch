@@ -1,0 +1,18 @@
+diff --git a/bindings/c/src/operator.rs b/bindings/c/src/operator.rs
+index 1234567..abcdefg 100644
+--- a/bindings/c/src/operator.rs
++++ b/bindings/c/src/operator.rs
+@@ -25,9 +25,13 @@ use std::sync::LazyLock;
+
+ use super::*;
+
++// Use single-threaded runtime for better compatibility with various FFI environments
++// This avoids TLS-related issues in some language bindings (e.g., MoonBit)
++// For blocking operations, single-threaded runtime provides sufficient performance
+ static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+-    tokio::runtime::Builder::new_multi_thread()
++    tokio::runtime::Builder::new_current_thread()
+         .enable_all()
+         .build()
+         .unwrap()
+ });

@@ -21,5 +21,8 @@
     "--clang-tidy",
     "--cross-file-rename=true",
     "--compile-commands-dir=${workspaceFolder}/bindings/cpp/build/"
-  ]
+  ],
+  "files.associations": {
+    "opendal.h": "c"
+  }
 }

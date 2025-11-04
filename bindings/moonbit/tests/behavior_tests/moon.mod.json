@@ -1,0 +1,11 @@
+{
+  "name": "opendal/behavior_tests",
+  "version": "0.1.0",
+  "deps": {
+    "opendal/lib": {
+      "path": "../.."
+    }
+  },
+  "source": ".",
+  "preferred-target": "native"
+}

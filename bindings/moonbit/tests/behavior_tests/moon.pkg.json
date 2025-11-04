@@ -1,0 +1,14 @@
+{
+  "is-main": false,
+  "import": [
+    {
+      "path": "opendal/lib",
+      "alias": "opendal"
+    }
+  ],
+  "link": {
+    "native": {
+      "cc-link-flags": "-L../../../c/target/release -lopendal_c"
+    }
+  }
+}
