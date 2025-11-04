@@ -1,0 +1,15 @@
+[package]
+name = "opendal-moonbit"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+opendal = { path = "../../../core", features = ["services-memory", "blocking"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[profile.release]
+lto = true
+opt-level = 3

@@ -1,0 +1,11 @@
+{
+  "is-main": true,
+  "import": [],
+  "test-import": [],
+  "supported-targets": ["native"],
+  "link": {
+    "native": {
+      "cc-link-flags": "-L./rust-ffi/target/release -lopendal_moonbit"
+    }
+  }
+}

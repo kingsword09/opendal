@@ -1,0 +1,14 @@
+{
+  "is-main": false,
+  "import": [
+    {
+      "path": "opendal/lib",
+      "alias": "opendal"
+    }
+  ],
+  "link": {
+    "native": {
+      "cc-link-flags": "-L../../rust-ffi/target/release -lopendal_moonbit"
+    }
+  }
+}
